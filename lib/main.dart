@@ -4,7 +4,7 @@ import 'package:test_web/Pages/landing_page.dart';
 import 'pages/signin_page.dart';
 import 'pages/signup_page.dart';
 import 'pages/home_page.dart';
-import 'widgets/animated_background.dart'; // Add this import
+// Add this import
 
 void main() => runApp(const MyApp());
 
@@ -14,7 +14,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Energy Trading Platform',
+      title: 'PIONEER',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.deepPurple,

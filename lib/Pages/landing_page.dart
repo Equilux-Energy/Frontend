@@ -194,9 +194,9 @@ class _LandingPageState extends State<LandingPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const AnimateOnVisibility(
-                key: const Key('hero-title'),
+                key: Key('hero-title'),
                 slideYBegin: 0.2,
-                child: const Text(
+                child: Text(
                   'PIONEER',
                   style: TextStyle(
                     fontSize: 72,
@@ -210,10 +210,10 @@ class _LandingPageState extends State<LandingPage> {
               ),
               const SizedBox(height: 24),
               const AnimateOnVisibility(
-                key: const Key('hero-subtitle'),
+                key: Key('hero-subtitle'),
                 delay: Duration(milliseconds: 200),
                 slideYBegin: 0.2,
-                child: const Text(
+                child: Text(
                   'Peer-to-Peer Energy Exchange Platform',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.w300),
@@ -246,8 +246,8 @@ class _LandingPageState extends State<LandingPage> {
         child: Column(
           children: [
             const AnimateOnVisibility(
-              key: const Key('problem-title'),
-              child: const Text(
+              key: Key('problem-title'),
+              child: Text(
                 'The Energy Crisis in Lebanon',
                 style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white),
               ),
@@ -294,8 +294,8 @@ class _LandingPageState extends State<LandingPage> {
         child: Column(
           children: [
             const AnimateOnVisibility(
-              key: const Key('features-title'),
-              child: const Text(
+              key: Key('features-title'),
+              child: Text(
                 'Platform Features',
                 style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white),
               ),
@@ -305,56 +305,56 @@ class _LandingPageState extends State<LandingPage> {
               shrinkWrap: true,
               crossAxisCount: 3,
               physics: const NeverScrollableScrollPhysics(),
-              children: [
-                const AnimateOnVisibility(
-                  key: const Key('feature-card-0'),
+              children: const [
+                AnimateOnVisibility(
+                  key: Key('feature-card-0'),
                   slideXBegin: 0.2,
-                  child: const _FeatureCard(
+                  child: _FeatureCard(
                     icon: Icons.account_balance_wallet,
                     title: 'Blockchain Trading',
                     description: 'Secure P2P transactions using Hyperledger Fabric',
                   ),
                 ),
-                const AnimateOnVisibility(
-                  key: const Key('feature-card-1'),
+                AnimateOnVisibility(
+                  key: Key('feature-card-1'),
                   slideXBegin: 0.2,
-                  child: const _FeatureCard(
+                  child: _FeatureCard(
                     icon: Icons.solar_power,
                     title: 'Renewable Integration',
                     description: 'Combine solar panels with existing generators',
                   ),
                 ),
-                const AnimateOnVisibility(
-                  key: const Key('feature-card-2'),
+                AnimateOnVisibility(
+                  key: Key('feature-card-2'),
                   slideXBegin: 0.2,
-                  child: const _FeatureCard(
+                  child: _FeatureCard(
                     icon: Icons.psychology,
                     title: 'AI Predictions',
                     description: 'Machine learning for energy forecasting',
                   ),
                 ),
-                const AnimateOnVisibility(
-                  key: const Key('feature-card-3'),
+                AnimateOnVisibility(
+                  key: Key('feature-card-3'),
                   slideXBegin: 0.2,
-                  child: const _FeatureCard(
+                  child: _FeatureCard(
                     icon: Icons.bolt,
                     title: 'Microgrid Support',
                     description: 'Islanding capability & grid synchronization',
                   ),
                 ),
-                const AnimateOnVisibility(
-                  key: const Key('feature-card-4'),
+                AnimateOnVisibility(
+                  key: Key('feature-card-4'),
                   slideXBegin: 0.2,
-                  child: const _FeatureCard(
+                  child: _FeatureCard(
                     icon: Icons.security,
                     title: 'Military-Grade Security',
                     description: 'End-to-end encrypted communications',
                   ),
                 ),
-                const AnimateOnVisibility(
-                  key: const Key('feature-card-5'),
+                AnimateOnVisibility(
+                  key: Key('feature-card-5'),
                   slideXBegin: 0.2,
-                  child: const _FeatureCard(
+                  child: _FeatureCard(
                     icon: Icons.currency_exchange,
                     title: 'Dynamic Pricing',
                     description: 'Real-time market-based pricing engine',
@@ -384,8 +384,8 @@ class _LandingPageState extends State<LandingPage> {
         child: Column(
           children: [
             const AnimateOnVisibility(
-              key: const Key('tech-stack-title'),
-              child: const Text(
+              key: Key('tech-stack-title'),
+              child: Text(
                 'Powered By Cutting-Edge Technology',
                 style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
               ),
@@ -424,41 +424,41 @@ class _LandingPageState extends State<LandingPage> {
       key: const Key('how-it-works-section'),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 100, horizontal: 24),
-        child: Column(
+        child: const Column(
           children: [
-            const AnimateOnVisibility(
-              key: const Key('how-it-works-title'),
-              child: const Text(
+            AnimateOnVisibility(
+              key: Key('how-it-works-title'),
+              child: Text(
                 'How It Works',
                 style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
-            const SizedBox(height: 60),
+            SizedBox(height: 60),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                const AnimateOnVisibility(
-                  key: const Key('step-card-1'),
+                AnimateOnVisibility(
+                  key: Key('step-card-1'),
                   slideYBegin: 0.2,
-                  child: const _StepCard(
+                  child: _StepCard(
                     step: 1,
                     title: 'Generate Energy',
                     description: 'Install solar panels or use existing generators',
                   ),
                 ),
-                const AnimateOnVisibility(
-                  key: const Key('step-card-2'),
+                AnimateOnVisibility(
+                  key: Key('step-card-2'),
                   slideYBegin: 0.2,
-                  child: const _StepCard(
+                  child: _StepCard(
                     step: 2,
                     title: 'Connect Devices',
                     description: 'Install smart meters and IoT controllers',
                   ),
                 ),
-                const AnimateOnVisibility(
-                  key: const Key('step-card-3'),
+                AnimateOnVisibility(
+                  key: Key('step-card-3'),
                   slideYBegin: 0.2,
-                  child: const _StepCard(
+                  child: _StepCard(
                     step: 3,
                     title: 'Start Trading',
                     description: 'Buy/sell energy through our secure platform',
@@ -481,8 +481,8 @@ class _LandingPageState extends State<LandingPage> {
         child: Column(
           children: [
             const AnimateOnVisibility(
-              key: const Key('benefits-title'),
-              child: const Text(
+              key: Key('benefits-title'),
+              child: Text(
                 'Community Benefits',
                 style: TextStyle(fontSize: 42, fontWeight: FontWeight.bold, color: Colors.white),
               ),
@@ -537,8 +537,8 @@ class _LandingPageState extends State<LandingPage> {
         child: Column(
           children: [
             const AnimateOnVisibility(
-              key: const Key('cta-title'),
-              child: const Text(
+              key: Key('cta-title'),
+              child: Text(
                 'Ready to Transform Energy in Lebanon?',
                 style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
               ),
@@ -555,8 +555,8 @@ class _LandingPageState extends State<LandingPage> {
             ),
             const SizedBox(height: 20),
             const AnimateOnVisibility(
-              key: const Key('cta-cost'),
-              child: const Text('Demo System Cost: \$590', style: TextStyle(fontSize: 18, color: Colors.white70)),
+              key: Key('cta-cost'),
+              child: Text('Demo System Cost: \$590', style: TextStyle(fontSize: 18, color: Colors.white70)),
             ),
           ],
         ),
@@ -572,8 +572,8 @@ class _LandingPageState extends State<LandingPage> {
         child: Column(
           children: [
             const AnimateOnVisibility(
-              key: const Key('compliance-title'),
-              child: const Text(
+              key: Key('compliance-title'),
+              child: Text(
                 'Compliant & Certified',
                 style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white),
               ),

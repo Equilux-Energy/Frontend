@@ -118,8 +118,8 @@ class _SignInPageState extends State<SignInPage> {
                                   ),
                                     // Social Login Section
                                     const SizedBox(height: 24),
-                                    Row(
-                                      children: const [
+                                    const Row(
+                                      children: [
                                         Expanded(child: Divider()),
                                         Padding(
                                           padding: EdgeInsets.symmetric(horizontal: 8.0),
