@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:test_web/Pages/landing_page.dart';
 import 'Pages/chat_page.dart';
+import 'Pages/transaction_page.dart';
 import 'pages/signin_page.dart';
 import 'pages/signup_page.dart';
 import 'pages/home_page.dart';
@@ -35,6 +36,7 @@ class MyApp extends StatelessWidget {
         '/signup': (context) => const SignUpPage(),
         '/landing': (context) => const LandingPage(),
         '/chat': (context) => const ChatPage(),
+        '/transactions': (context) => const TransactionPage(),
       },
     );
   }

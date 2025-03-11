@@ -169,6 +169,7 @@ class HomePage extends StatelessWidget {
   
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
+      backgroundColor: const Color(0xFF2A0030), // Match sidebar background color
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
           topRight: Radius.circular(0),
@@ -221,11 +222,11 @@ class HomePage extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              _buildNavItem(context, 'Dashboard', Icons.dashboard, true,""),
+              _buildNavItem(context, 'Dashboard', Icons.dashboard, true,"/home"),
               _buildNavItem(context, 'User Profile', Icons.person, false,""),
               _buildNavItem(context, 'Analytics', Icons.analytics, false,""),
               _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false,""),
-              _buildNavItem(context, 'Transactions', Icons.history, false,""),
+              _buildNavItem(context, 'Transactions', Icons.history, false,"/transactions"),
               _buildNavItem(context, 'Chat', Icons.chat, false,"/chat"),
               _buildNavItem(context, 'Settings', Icons.settings, false,""),
               _buildNavItem(context, 'Support', Icons.support, false,""),
