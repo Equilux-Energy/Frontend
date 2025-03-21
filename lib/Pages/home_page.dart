@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../Services/chart_card.dart';
 import '../Services/metamask.dart';
+import '../Services/theme_provider.dart';
 import '../Widgets/animated_background.dart';
 import 'package:fl_chart/fl_chart.dart' as fl_chart;
 
@@ -10,67 +11,65 @@ class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final screenSize = MediaQuery.of(context).size;
-    final bool isMobile = screenSize.width < 1100;
+Widget build(BuildContext context) {
+  final screenSize = MediaQuery.of(context).size;
+  final bool isMobile = screenSize.width < 1100;
+  final themeProvider = Provider.of<ThemeProvider>(context);
 
-    return ChangeNotifierProvider<MetaMaskProvider>(
-      create: (context) => MetaMaskProvider()..init(),
-      builder: (context, child) {
-        return Stack(
-          children: [
-            const AnimatedBackground(),
-            Scaffold(
-              backgroundColor: Colors.transparent,
-              appBar: isMobile ? _buildAppBar(context) : null,
-              drawer: isMobile ? _buildDrawer(context) : null,
-              body: Row(
-                children: [
-                  // Permanent sidebar for desktop
-                  if (!isMobile) _buildSidebar(context),
-                  
-                  // Main content area
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(24.0),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Top bar with profile and wallet for desktop
-                            if (!isMobile)
-                              _buildTopBar(context),
-                              
-                            const SizedBox(height: 16),
-                            const Text('Dashboard', 
-                              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
-                            const SizedBox(height: 24),
+  return ChangeNotifierProvider<MetaMaskProvider>(
+    create: (context) => MetaMaskProvider()..init(),
+    builder: (context, child) {
+      return Stack(
+        children: [
+          if (themeProvider.isDarkMode) 
+            const AnimatedBackground() 
+          else 
+            Container(color: Colors.grey[100]),
+          Scaffold(
+            backgroundColor: Colors.transparent,
+            appBar: isMobile ? _buildAppBar(context) : null,
+            drawer: isMobile ? _buildDrawer(context) : null,
+            body: Row(
+              children: [
+                if (!isMobile) _buildSidebar(context),
+                
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(24.0),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (!isMobile)
+                            _buildTopBar(context),
                             
-                            // Stats cards row
-                            _buildStatsCards(),
-                            
-                            const SizedBox(height: 24),
-                            
-                            // Charts and data section
-                            _buildChartsSection(context),
-                            
-                            const SizedBox(height: 24),
-                            
-                            // Tables and tasks section
-                            _buildTableSection(context),
-                          ],
-                        ),
+                          const SizedBox(height: 16),
+                          Text('Dashboard', 
+                            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
+                          const SizedBox(height: 24),
+                          
+                          _buildStatsCards(),
+                          
+                          const SizedBox(height: 24),
+                          
+                          _buildChartsSection(context),
+                          
+                          const SizedBox(height: 24),
+                          
+                          _buildTableSection(context),
+                        ],
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        );
-      }
-    );
-  }
+          ),
+        ],
+      );
+    }
+  );
+}
   
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
@@ -102,32 +101,35 @@ class HomePage extends StatelessWidget {
   }
   
   Widget _buildTopBar(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('PIONEER Dashboard', 
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              onPressed: () {},
-            ),
-            IconButton(
-              icon: const Icon(Icons.notifications, color: Colors.white),
-              onPressed: () {},
-            ),
-            _buildWalletButton(context),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: () => Navigator.pushReplacementNamed(context, '/signin'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text('PIONEER Dashboard', 
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
+      Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.search, color: themeProvider.textColor),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: Icon(Icons.notifications, color: themeProvider.textColor),
+            onPressed: () {},
+          ),
+          _buildWalletButton(context),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(Icons.logout, color: themeProvider.textColor),
+            onPressed: () => Navigator.pushReplacementNamed(context, '/signin'),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
   
   Widget _buildWalletButton(BuildContext context) {
     return Consumer<MetaMaskProvider>(
@@ -223,12 +225,12 @@ class HomePage extends StatelessWidget {
             padding: EdgeInsets.zero,
             children: [
               _buildNavItem(context, 'Dashboard', Icons.dashboard, true,"/home"),
-              _buildNavItem(context, 'User Profile', Icons.person, false,""),
+              _buildNavItem(context, 'User Profile', Icons.person, false,"/profile"),
               _buildNavItem(context, 'Analytics', Icons.analytics, false,""),
               _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false,""),
               _buildNavItem(context, 'Transactions', Icons.history, false,"/transactions"),
               _buildNavItem(context, 'Chat', Icons.chat, false,"/chat"),
-              _buildNavItem(context, 'Settings', Icons.settings, false,""),
+              _buildNavItem(context, 'Settings', Icons.settings, false,"/settings"),
               _buildNavItem(context, 'Support', Icons.support, false,""),
             ],
           ),
@@ -292,6 +294,7 @@ class HomePage extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           children: [
             _buildStatsCard(
+              context,
               icon: Icons.energy_savings_leaf,
               iconColor: Colors.green,
               title: 'Energy Used',
@@ -300,6 +303,7 @@ class HomePage extends StatelessWidget {
               isPositiveTrend: false,
             ),
             _buildStatsCard(
+              context,
               icon: Icons.eco,
               iconColor: Colors.blue,
               title: 'Carbon Offset',
@@ -308,6 +312,7 @@ class HomePage extends StatelessWidget {
               isPositiveTrend: true,
             ),
             _buildStatsCard(
+              context,
               icon: Icons.account_balance,
               iconColor: Colors.orange,
               title: 'Token Balance',
@@ -316,6 +321,7 @@ class HomePage extends StatelessWidget {
               isPositiveTrend: true,
             ),
             _buildStatsCard(
+              context,
               icon: Icons.bolt,
               iconColor: Colors.red,
               title: 'Peak Power',
@@ -329,78 +335,75 @@ class HomePage extends StatelessWidget {
     );
   }
   
-  Widget _buildStatsCard({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String value,
-    required String subtitle,
-    required bool isPositiveTrend,
-  }) {
-    return Card(
-      elevation: 8,
-      shadowColor: Colors.black,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF2A0030).withOpacity(0.7),
-              const Color(0xff5e0b8b).withOpacity(0.5),
+  // Then modify the stats cards
+Widget _buildStatsCard(BuildContext context, {
+  required IconData icon,
+  required Color iconColor,
+  required String title,
+  required String value,
+  required String subtitle,
+  required bool isPositiveTrend,
+}) {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  return Card(
+    elevation: 8,
+    shadowColor: Colors.black,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    child: Container(
+      decoration: BoxDecoration(
+        gradient: themeProvider.cardGradient,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              CircleAvatar(
+                backgroundColor: iconColor.withOpacity(0.2),
+                child: Icon(icon, color: iconColor),
+              ),
+              Icon(
+                isPositiveTrend ? Icons.trending_up : Icons.trending_down,
+                color: isPositiveTrend ? Colors.green : Colors.red,
+              ),
             ],
           ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                CircleAvatar(
-                  backgroundColor: iconColor.withOpacity(0.2),
-                  child: Icon(icon, color: iconColor),
-                ),
-                Icon(
-                  isPositiveTrend ? Icons.trending_up : Icons.trending_down,
-                  color: isPositiveTrend ? Colors.green : Colors.red,
-                ),
-              ],
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: themeProvider.textColor,
             ),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              color: themeProvider.textColorSecondary,
             ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[300],
-              ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 12,
+              color: isPositiveTrend ? Colors.green[300] : Colors.red[300],
             ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 12,
-                color: isPositiveTrend ? Colors.green[300] : Colors.red[300],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
+
   
   Widget _buildChartsSection(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -417,7 +420,7 @@ class HomePage extends StatelessWidget {
           const SizedBox(width: 16),
           Expanded(
             flex: 4,
-            child: _buildTokenDistributionChart(),
+            child: _buildTokenDistributionChart(context),
           ),
         ],
       );
@@ -426,7 +429,7 @@ class HomePage extends StatelessWidget {
         children: [
           _buildEnergyConsumptionChart(),
           const SizedBox(height: 16),
-          _buildTokenDistributionChart(),
+          _buildTokenDistributionChart(context),
         ],
       );
     }
@@ -439,58 +442,60 @@ class HomePage extends StatelessWidget {
     );
   }
   
-  Widget _buildTokenDistributionChart() {
-    return Card(
-      elevation: 8,
-      shadowColor: Colors.black,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Token Distribution',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 300,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(
-                    height: 200,
-                    child: Center(
-                      child: Text("Pie chart placeholder",
-                        style: TextStyle(color: Colors.white70)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildLegendItem('Staked', Colors.purple),
-                      _buildLegendItem('Available', Colors.blue),
-                      _buildLegendItem('Rewards', Colors.green),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+  Widget _buildTokenDistributionChart(BuildContext context) {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  return Card(
+    elevation: 8,
+    shadowColor: Colors.black,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    child: Container(
+      decoration: BoxDecoration(
+        gradient: themeProvider.cardGradient,
+        borderRadius: BorderRadius.circular(8),
       ),
-    );
-  }
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Token Distribution',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: themeProvider.textColor,
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 300,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  height: 200,
+                  child: Center(
+                    child: Text("Pie chart placeholder",
+                      style: TextStyle(color: themeProvider.textColorSecondary)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildLegendItem('Staked', Colors.purple),
+                    _buildLegendItem('Available', Colors.blue),
+                    _buildLegendItem('Rewards', Colors.green),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
   
   Widget _buildLegendItem(String label, Color color) {
     return Row(
