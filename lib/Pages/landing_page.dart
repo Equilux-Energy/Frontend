@@ -227,51 +227,71 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
             // Floating Island App Bar
             _buildFloatingIslandAppBar(),
 
+            // Update the back to top button for mobile
             AnimatedPositioned(
-            duration: const Duration(milliseconds: 600),
-            curve: Curves.elasticOut,
-            top: _showFloatingIsland ? 95 : -100, // Position below the floating island
-            right: 40,
-            left: 40,
-            child: AnimatedBuilder(
-              animation: _floatController,
-              builder: (context, child) {
-                return Transform.translate(
-                  offset: Offset(0, 3 * math.sin(_floatController.value * math.pi * 2)),
-                  child: child,
-                );
-              },
-              child: GestureDetector(
-                onTap: () {
-                  _scrollController.animateTo(
-                    0,
-                    duration: const Duration(milliseconds: 800),
-                    curve: Curves.easeInOutCubic,
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.elasticOut,
+              top: _showFloatingIsland ? 95 : -100,
+              right: 0,
+              left: 0,
+              child: AnimatedBuilder(
+                animation: _floatController,
+                builder: (context, child) {
+                  return Transform.translate(
+                    offset: Offset(0, 3 * math.sin(_floatController.value * math.pi * 2)),
+                    child: child,
                   );
                 },
-                
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Icon(
-                        Icons.keyboard_double_arrow_up,
-                        color: Colors.white.withOpacity(0.7),
-                        size: 28,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      _scrollController.animateTo(
+                        0,
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.easeInOutCubic,
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: Colors.deepPurple.withOpacity(0.3),
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.deepPurple.withOpacity(0.2),
+                            blurRadius: 15,
+                            spreadRadius: 2,
+                          ),
+                        ],
                       ),
-                      AnimatedBuilder(
-                        animation: _pulseController,
-                        builder: (context, child) {
-                          return Transform.translate(
-                            offset: Offset(0, -2 * _pulseController.value),
-                            child: Icon(
-                              Icons.keyboard_double_arrow_up,
-                              color: Colors.white,
-                              size: 28,
-                            ),
-                          );
-                        },
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            Icons.keyboard_double_arrow_up,
+                            color: Colors.white.withOpacity(0.7),
+                            size: 28,
+                          ),
+                          AnimatedBuilder(
+                            animation: _pulseController,
+                            builder: (context, child) {
+                              return Transform.translate(
+                                offset: Offset(0, -2 * _pulseController.value),
+                                child: Icon(
+                                  Icons.keyboard_double_arrow_up,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -313,283 +333,419 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
   }
 
   Widget _buildInitialHeader() {
-    return AnimatedOpacity(
-      opacity: 1.0 - _scrollProgress,
-      duration: const Duration(milliseconds: 200),
+  final isMobile = Responsive.isMobile(context);
+  
+  return AnimatedOpacity(
+    opacity: 1.0 - _scrollProgress,
+    duration: const Duration(milliseconds: 200),
+    child: Container(
+      padding: Responsive.getScreenPadding(context),
+      height: kToolbarHeight + (isMobile ? 16 : 32),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Logo with animation
+          Row(
+            children: [
+              // Animated energy icon
+              AnimatedBuilder(
+                animation: _pulseController,
+                builder: (context, child) {
+                  return Container(
+                    width: isMobile ? 32 : 40,
+                    height: isMobile ? 32 : 40,
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.deepPurple.withOpacity(0.8),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
+                          blurRadius: 10 + 5 * _pulseController.value,
+                          spreadRadius: 1 + _pulseController.value,
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.bolt,
+                        color: Colors.deepPurple.shade100,
+                        size: isMobile ? 16 : 20,
+                      ),
+                    ),
+                  );
+                }
+              ),
+              SizedBox(width: isMobile ? 8 : 16),
+              ShaderMask(
+                shaderCallback: (bounds) {
+                  return LinearGradient(
+                    colors: [
+                      Colors.deepPurple.shade300,
+                      Colors.cyan.shade300,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(bounds);
+                },
+                child: Text(
+                  'PIONEER',
+                  style: TextStyle(
+                    fontSize: isMobile ? 18 : 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: isMobile ? 2.0 : 3.0,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          // Nav Items - Mobile Menu vs Desktop Nav
+          isMobile 
+              ? _buildMobileHeaderMenu() 
+              : Row(
+                  children: [
+                    _buildNavItem('Vision', () {
+                      _scrollToSection(_visionKey);
+                    }),
+                    _buildNavItem('Technology', () {
+                      _scrollToSection(_technologyKey);
+                    }),
+                    _buildNavItem('Features', () {
+                      _scrollToSection(_featuresKey);
+                    }),
+                    _buildNavItem('Contact', () {
+                      _scrollToSection(_contactKey);
+                    }),
+                  ],
+                ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildMobileHeaderMenu() {
+  return PopupMenuButton<String>(
+    icon: const Icon(Icons.menu, color: Colors.white),
+    color: Colors.black.withOpacity(0.8),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(15),
+      side: BorderSide(
+        color: Colors.deepPurple.withOpacity(0.3),
+        width: 1.5,
+      ),
+    ),
+    onSelected: (value) {
+      switch (value) {
+        case 'Vision':
+          _scrollToSection(_visionKey);
+          break;
+        case 'Technology':
+          _scrollToSection(_technologyKey);
+          break;
+        case 'Features':
+          _scrollToSection(_featuresKey);
+          break;
+        case 'Contact':
+          _scrollToSection(_contactKey);
+          break;
+      }
+    },
+    itemBuilder: (context) => [
+      const PopupMenuItem(
+        value: 'Vision',
+        child: Text('Vision', style: TextStyle(color: Colors.white)),
+      ),
+      const PopupMenuItem(
+        value: 'Technology',
+        child: Text('Technology', style: TextStyle(color: Colors.white)),
+      ),
+      const PopupMenuItem(
+        value: 'Features',
+        child: Text('Features', style: TextStyle(color: Colors.white)),
+      ),
+      const PopupMenuItem(
+        value: 'Contact',
+        child: Text('Contact', style: TextStyle(color: Colors.white)),
+      ),
+    ],
+  );
+}
+
+  Widget _buildFloatingIslandAppBar() {
+  final size = MediaQuery.of(context).size;
+  final isMobile = Responsive.isMobile(context);
+  final islandWidth = math.min(size.width * 0.92, 800.0);
+  
+  return AnimatedPositioned(
+    duration: const Duration(milliseconds: 600),
+    curve: Curves.elasticOut,
+    top: _showFloatingIsland ? 20 : -100,
+    left: (size.width - islandWidth) / 2,
+    right: (size.width - islandWidth) / 2,
+    child: AnimatedBuilder(
+      animation: _floatController,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, 3 * math.sin(_floatController.value * math.pi * 2)),
+          child: child,
+        );
+      },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-        height: kToolbarHeight + 32,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Logo with animation
-            Row(
+        height: isMobile ? 60 : 70,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(35),
+          border: Border.all(
+            color: Colors.deepPurple.withOpacity(0.3),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.deepPurple.withOpacity(0.2),
+              blurRadius: 20,
+              spreadRadius: 5,
+              offset: const Offset(0, 10),
+            ),
+            BoxShadow(
+              color: Colors.cyan.withOpacity(0.1),
+              blurRadius: 30,
+              spreadRadius: -5,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(35),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 15 : 30),
+              child: isMobile 
+                ? _buildMobileAppBarContent()
+                : _buildDesktopAppBarContent(),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _buildMobileAppBarContent() {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      // Logo only for mobile
+      ShaderMask(
+        shaderCallback: (bounds) {
+          return LinearGradient(
+            colors: [
+              Colors.deepPurple.shade300,
+              Colors.cyan.shade300,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(bounds);
+        },
+        child: const Text(
+          'PIONEER',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.5,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      
+      // Mobile menu
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.menu, color: Colors.white),
+        color: Colors.black.withOpacity(0.8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+          side: BorderSide(
+            color: Colors.deepPurple.withOpacity(0.3),
+            width: 1.5,
+          ),
+        ),
+        onSelected: (value) {
+          switch (value) {
+            case 'Vision':
+              _scrollToSection(_visionKey);
+              break;
+            case 'Technology':
+              _scrollToSection(_technologyKey);
+              break;
+            case 'Features':
+              _scrollToSection(_featuresKey);
+              break;
+            case 'Contact':
+              _scrollToSection(_contactKey);
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: 'Vision',
+            child: Text('Vision', style: TextStyle(color: Colors.white)),
+          ),
+          const PopupMenuItem(
+            value: 'Technology',
+            child: Text('Technology', style: TextStyle(color: Colors.white)),
+          ),
+          const PopupMenuItem(
+            value: 'Features',
+            child: Text('Features', style: TextStyle(color: Colors.white)),
+          ),
+          const PopupMenuItem(
+            value: 'Contact',
+            child: Text('Contact', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Widget _buildDesktopAppBarContent() {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      // Animated logo
+      Row(
+        children: [
+          // Energy pulse icon
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: Stack(
+              alignment: Alignment.center,
               children: [
-                // Animated energy icon
+                // Outer pulse rings
                 AnimatedBuilder(
                   animation: _pulseController,
                   builder: (context, child) {
                     return Container(
-                      width: 40,
-                      height: 40,
+                      width: 36 * (0.6 + 0.4 * _pulseController.value),
+                      height: 36 * (0.6 + 0.4 * _pulseController.value),
                       decoration: BoxDecoration(
-                        color: Colors.transparent,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.deepPurple.withOpacity(0.8),
-                          width: 2,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
-                            blurRadius: 10 + 5 * _pulseController.value,
-                            spreadRadius: 1 + _pulseController.value,
+                          color: Colors.deepPurple.withOpacity(
+                            0.8 * (1 - _pulseController.value),
                           ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Icon(
-                          Icons.bolt,
-                          color: Colors.deepPurple.shade100,
-                          size: 20,
+                          width: 2,
                         ),
                       ),
                     );
-                  }
-                ),
-                const SizedBox(width: 16),
-                ShaderMask(
-                  shaderCallback: (bounds) {
-                    return const LinearGradient(
-                      colors: [
-                        Color(0xFF9575CD),
-                        Color(0xFF4DD0E1),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ).createShader(bounds);
                   },
-                  child: const Text(
-                    'PIONEER',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 3.0,
+                ),
+                
+                // Middle pulse ring
+                AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) {
+                    return Container(
+                      width: 26 * (0.7 + 0.3 * _pulseController.value),
+                      height: 26 * (0.7 + 0.3 * _pulseController.value),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.cyan.withOpacity(
+                            0.6 * (1 - _pulseController.value),
+                          ),
+                          width: 1.5,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                
+                // Core
+                Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.deepPurple.shade300,
+                        Colors.deepPurple.shade900,
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.deepPurple.withOpacity(0.5),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.bolt,
                       color: Colors.white,
+                      size: 10,
                     ),
                   ),
                 ),
               ],
             ),
-            
-            // Nav Items
-            Row(
-              children: [
-                _buildNavItem('Vision', () {
-                  _scrollToSection(_visionKey);
-                }),
-                _buildNavItem('Technology', () {
-                  _scrollToSection(_technologyKey);
-                }),
-                _buildNavItem('Features', () {
-                  _scrollToSection(_featuresKey);
-                }),
-                _buildNavItem('Contact', () {
-                  _scrollToSection(_contactKey);
-                }),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFloatingIslandAppBar() {
-    final size = MediaQuery.of(context).size;
-    final islandWidth = math.min(size.width * 0.8, 800.0);
-    
-    return AnimatedPositioned(
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.elasticOut,
-      top: _showFloatingIsland ? 20 : -100,
-      left: (size.width - islandWidth) / 2,
-      right: (size.width - islandWidth) / 2,
-      child: AnimatedBuilder(
-        animation: _floatController,
-        builder: (context, child) {
-          return Transform.translate(
-            offset: Offset(0, 3 * math.sin(_floatController.value * math.pi * 2)),
-            child: child,
-          );
-        },
-        child: Container(
-          height: 70,
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.4),
-            borderRadius: BorderRadius.circular(35),
-            border: Border.all(
-              color: Colors.deepPurple.withOpacity(0.3),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.deepPurple.withOpacity(0.2),
-                blurRadius: 20,
-                spreadRadius: 5,
-                offset: const Offset(0, 10),
-              ),
-              BoxShadow(
-                color: Colors.cyan.withOpacity(0.1),
-                blurRadius: 30,
-                spreadRadius: -5,
-                offset: const Offset(0, -5),
-              ),
-            ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(35),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Animated logo
-                    Row(
-                      children: [
-                        // Energy pulse icon
-                        SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // Outer pulse rings
-                              AnimatedBuilder(
-                                animation: _pulseController,
-                                builder: (context, child) {
-                                  return Container(
-                                    width: 36 * (0.6 + 0.4 * _pulseController.value),
-                                    height: 36 * (0.6 + 0.4 * _pulseController.value),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.deepPurple.withOpacity(
-                                          0.8 * (1 - _pulseController.value),
-                                        ),
-                                        width: 2,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              
-                              // Middle pulse ring
-                              AnimatedBuilder(
-                                animation: _pulseController,
-                                builder: (context, child) {
-                                  return Container(
-                                    width: 26 * (0.7 + 0.3 * _pulseController.value),
-                                    height: 26 * (0.7 + 0.3 * _pulseController.value),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.cyan.withOpacity(
-                                          0.6 * (1 - _pulseController.value),
-                                        ),
-                                        width: 1.5,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              
-                              // Core
-                              Container(
-                                width: 18,
-                                height: 18,
-                                decoration: BoxDecoration(
-                                  gradient: RadialGradient(
-                                    colors: [
-                                      Colors.deepPurple.shade300,
-                                      Colors.deepPurple.shade900,
-                                    ],
-                                  ),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.deepPurple.withOpacity(0.5),
-                                      blurRadius: 10,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.bolt,
-                                    color: Colors.white,
-                                    size: 10,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Text with gradient
-                        ShaderMask(
-                          shaderCallback: (bounds) {
-                            return LinearGradient(
-                              colors: [
-                                Colors.deepPurple.shade300,
-                                Colors.cyan.shade300,
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ).createShader(bounds);
-                          },
-                          child: const Text(
-                            'PIONEER',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    
-                    // Nav items in the floating island
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildFloatingNavItem('Vision', () {
-                          _scrollToSection(_visionKey);
-                        }),
-                        _buildFloatingNavItem('Technology', () {
-                          _scrollToSection(_technologyKey);
-                        }),
-                        _buildFloatingNavItem('Features', () {
-                          _scrollToSection(_featuresKey);
-                        }),
-                        _buildFloatingNavItem('Contact', () {
-                          _scrollToSection(_contactKey);
-                        }),
-                      ],
-                    ),
-                  ],
-                ),
+          const SizedBox(width: 12),
+          // Text with gradient
+          ShaderMask(
+            shaderCallback: (bounds) {
+              return LinearGradient(
+                colors: [
+                  Colors.deepPurple.shade300,
+                  Colors.cyan.shade300,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(bounds);
+            },
+            child: const Text(
+              'PIONEER',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+                color: Colors.white,
               ),
             ),
           ),
-        ),
+        ],
       ),
-    );
-  }
+      
+      // Nav items for desktop
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildFloatingNavItem('Vision', () {
+            _scrollToSection(_visionKey);
+          }),
+          _buildFloatingNavItem('Technology', () {
+            _scrollToSection(_technologyKey);
+          }),
+          _buildFloatingNavItem('Features', () {
+            _scrollToSection(_featuresKey);
+          }),
+          _buildFloatingNavItem('Contact', () {
+            _scrollToSection(_contactKey);
+          }),
+        ],
+      ),
+    ],
+  );
+}
   
  void _scrollToSection(GlobalKey key) {
   if (key.currentContext == null) return;
@@ -653,440 +809,470 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
 }
 
   Widget _buildRevolutionaryHeroSection() {
-    return Stack(
-      key: _heroKey,
-      children: [
-        // Height should be screen height plus some extra space for scrolling effect
-        SizedBox(
-          height: MediaQuery.of(context).size.height * 1.1,
-          width: double.infinity,
-        ),
-        
-        // Energy field background effect
-        Positioned.fill(
-          child: AnimatedBuilder(
-            animation: Listenable.merge([_rotateController, _pulseController]),
-            builder: (context, child) {
-              return CustomPaint(
-                painter: EnergyFieldPainter(
-                  rotationValue: _rotateController.value,
-                  pulseValue: _pulseController.value,
-                ),
-              );
-            },
-          ),
-        ),
-        
-        // Orbiting energy spheres
-        Positioned.fill(
-          child: AnimatedBuilder(
-            animation: _orbitController,
-            builder: (context, child) {
-              return CustomPaint(
-                painter: OrbitalEnergyPainter(
-                  animation: _orbitController.value,
-                ),
-              );
-            },
-          ),
-        ),
-        
-        // Content positioned on top of effects
-        Positioned.fill(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Main title with glowing effect
-                  FutureText(
-                    'PIONEER',
-                    style: const TextStyle(
-                      fontSize: 100,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 10,
-                      height: 1,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  
-                  const SizedBox(height: 30),
-                  
-                  // Subtitle with animated reveal
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 500),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 30,
-                      vertical: 15,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(
-                        color: Colors.deepPurple.withOpacity(0.5),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.deepPurple.withOpacity(0.2),
-                          blurRadius: 15,
-                          spreadRadius: -5,
-                        ),
-                      ],
-                    ),
-                    child: const StaggeredTextAnimation(
-                      text: 'Peer-to-Peer Integrated Optimized Energy Exchange Resource',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w300,
-                        color: Colors.white,
-                        letterSpacing: 1,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 50),
-                  
-                  // Description text with animated typing effect
-                  SizedBox(
-                    width: 700,
-                    child: TypewriterText(
-                      'Revolutionizing energy distribution with blockchain-powered microgrids and AI-driven optimization.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Colors.white.withOpacity(0.8),
-                        fontWeight: FontWeight.w300,
-                        height: 1.5,
-                      ),
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 70),
-                  
-                  // Animated call-to-action button
-                  StatefulBuilder(
-                    builder: (context, setState) {
-                      return MouseRegion(
-                        onEnter: (_) => setState(() => _heroButtonHovered = true),
-                        onExit: (_) => setState(() => _heroButtonHovered = false),
-                        child: GestureDetector(
-                          onTap: () => _scrollToSection(_visionKey),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeOutCubic,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: _heroButtonHovered ? 40 : 32,
-                              vertical: 16,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _heroButtonHovered 
-                                  ? Colors.deepPurple.withOpacity(0.8)
-                                  : Colors.deepPurple.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(
-                                color: Colors.deepPurple.shade300,
-                                width: 1.5,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.deepPurple.withOpacity(_heroButtonHovered ? 0.5 : 0.3),
-                                  blurRadius: _heroButtonHovered ? 25 : 15,
-                                  spreadRadius: _heroButtonHovered ? 1 : -2,
-                                ),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Discover the Future of Energy',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: _heroButtonHovered ? 1.5 : 1.0,
-                                  ),
-                                ),
-                                AnimatedContainer(
-                                  duration: const Duration(milliseconds: 300),
-                                  width: _heroButtonHovered ? 12 : 0,
-                                ),
-                                AnimatedOpacity(
-                                  opacity: _heroButtonHovered ? 1.0 : 0.0,
-                                  duration: const Duration(milliseconds: 200),
-                                  child: const Icon(
-                                    Icons.arrow_forward,
-                                    color: Colors.white,
-                                    size: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  
-                  const SizedBox(height: 100),
-                  
-                  // Scroll indicator with fluid animation
-                  AnimatedBuilder(
-                    animation: _floatController,
-                    builder: (context, child) {
-                      return Transform.translate(
-                        offset: Offset(0, 8 * math.sin(_floatController.value * math.pi)),
-                        child: AnimatedOpacity(
-                          opacity: 0.7 + 0.3 * math.sin(_floatController.value * math.pi),
-                          duration: Duration.zero,
-                          child: const Icon(
-                            Icons.expand_more,
-                            color: Colors.white,
-                            size: 36,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildEnergyTransformationSection() {
-    return Container(
-      key: _visionKey,
-      padding: const EdgeInsets.symmetric(vertical: 100, horizontal: 32),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.2),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.5),
-            blurRadius: 50,
-            spreadRadius: -10,
-            offset: const Offset(0, -30),
-          ),
-        ],
+  final isMobile = Responsive.isMobile(context);
+  final isTablet = Responsive.isTablet(context);
+  
+  return Stack(
+    key: _heroKey,
+    children: [
+      // Height should be screen height plus some extra space for scrolling effect
+      SizedBox(
+        height: MediaQuery.of(context).size.height * 1.1,
+        width: double.infinity,
       ),
-      child: Column(
-        children: [
-          // Section title with reveal animation
-          const RevealText(
-            'Energy Revolution',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 42,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 1.5,
-            ),
-          ),
-          
-          const SizedBox(height: 40),
-          
-          // Description with fade animation
-          const FadeSlideAnimation(
-            delay: Duration(milliseconds: 300),
-            child: SizedBox(
-              width: 800,
-              child: Text(
-                'PIONEER transforms conventional energy systems into dynamic, decentralized networks. Break free from unreliable centralized infrastructure and high costs with peer-to-peer energy trading.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w300,
-                  height: 1.6,
-                ),
+      
+      // Energy field background effect
+      Positioned.fill(
+        child: AnimatedBuilder(
+          animation: Listenable.merge([_rotateController, _pulseController]),
+          builder: (context, child) {
+            return CustomPaint(
+              painter: EnergyFieldPainter(
+                rotationValue: _rotateController.value,
+                pulseValue: _pulseController.value,
               ),
-            ),
-          ),
-          
-          const SizedBox(height: 80),
-          
-          // Microgrid visualization with interactive components
-          SizedBox(
-            height: 500,
-            child: Stack(
+            );
+          },
+        ),
+      ),
+      
+      // Orbiting energy spheres
+      Positioned.fill(
+        child: AnimatedBuilder(
+          animation: _orbitController,
+          builder: (context, child) {
+            return CustomPaint(
+              painter: OrbitalEnergyPainter(
+                animation: _orbitController.value,
+              ),
+            );
+          },
+        ),
+      ),
+      
+      // Content positioned on top of effects
+      Positioned.fill(
+        child: Center(
+          child: Padding(
+            padding: Responsive.getScreenPadding(context),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Dynamic energy flow visualization
-                Positioned.fill(
-                  child: ClipRRect(
+                // Main title with glowing effect
+                FutureText(
+                  'PIONEER',
+                  style: TextStyle(
+                    fontSize: Responsive.getFontSize(context, isMobile ? 60 : isTablet ? 80 : 100),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: isMobile ? 5 : 10,
+                    height: 1,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                
+                const SizedBox(height: 30),
+                
+                // Subtitle with animated reveal
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 500),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 15 : 30,
+                    vertical: isMobile ? 10 : 15,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(30),
-                    child: AnimatedBuilder(
-                      animation: Listenable.merge([_rotateController, _pulseController]),
-                      builder: (context, child) {
-                        return CustomPaint(
-                          painter: EnergyFlowPainter(
-                            animation: _rotateController.value,
-                            pulseValue: _pulseController.value,
-                          ),
-                        );
-                      },
+                    border: Border.all(
+                      color: Colors.deepPurple.withOpacity(0.5),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.deepPurple.withOpacity(0.2),
+                        blurRadius: 15,
+                        spreadRadius: -5,
+                      ),
+                    ],
+                  ),
+                  child: StaggeredTextAnimation(
+                    text: 'Peer-to-Peer Integrated Optimized Energy Exchange Resource',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: Responsive.getFontSize(context, isMobile ? 16 : isTablet ? 18 : 22),
+                      fontWeight: FontWeight.w300,
+                      color: Colors.white,
+                      letterSpacing: 1,
+                      height: 1.4,
                     ),
                   ),
                 ),
                 
-                // Interactive energy nodes
-                Positioned(
-                  top: 80,
-                  left: MediaQuery.of(context).size.width * 0.15,
-                  child: InteractiveEnergyNode(
-                    label: 'Residential',
-                    icon: Icons.home,
-                    color: Colors.amber,
-                    description: 'Homes generate and consume energy from renewable sources',
+                SizedBox(height: isMobile ? 30 : 50),
+                
+                // Description text with animated typing effect
+                SizedBox(
+                  width: isMobile ? double.infinity : 700,
+                  child: TypewriterText(
+                    'Revolutionizing energy distribution with blockchain-powered microgrids and AI-driven optimization.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: Responsive.getFontSize(context, isMobile ? 14 : 18),
+                      color: Colors.white.withOpacity(0.8),
+                      fontWeight: FontWeight.w300,
+                      height: 1.5,
+                    ),
                   ),
                 ),
                 
-                Positioned(
-                  top: 120,
-                  right: MediaQuery.of(context).size.width * 0.15,
-                  child: InteractiveEnergyNode(
-                    label: 'Solar Array',
-                    icon: Icons.solar_power,
-                    color: Colors.orange,
-                    description: 'Clean energy generation with optimal sun tracking',
-                  ),
-                ),
+                SizedBox(height: isMobile ? 40 : 70),
                 
-                Positioned(
-                  bottom: 120,
-                  left: MediaQuery.of(context).size.width * 0.2,
-                  child: InteractiveEnergyNode(
-                    label: 'Business',
-                    icon: Icons.business,
-                    color: Colors.blue.shade300,
-                    description: 'Commercial entities participate in the energy marketplace',
-                  ),
-                ),
-                
-                Positioned(
-                  bottom: 140,
-                  right: MediaQuery.of(context).size.width * 0.2,
-                  child: InteractiveEnergyNode(
-                    label: 'Energy Storage',
-                    icon: Icons.battery_charging_full,
-                    color: Colors.green.shade300,
-                    description: 'Advanced battery systems store excess energy for peak demand',
-                  ),
-                ),
-                
-                // Central trading hub with pulsing animation
-                Center(
-                  child: AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, child) {
-                      return Container(
-                        padding: const EdgeInsets.all(30),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.deepPurple.withOpacity(0.5 + 0.3 * _pulseController.value),
-                            width: 2,
+                // Animated call-to-action button
+                StatefulBuilder(
+                  builder: (context, setState) {
+                    return MouseRegion(
+                      onEnter: (_) => setState(() => _heroButtonHovered = true),
+                      onExit: (_) => setState(() => _heroButtonHovered = false),
+                      child: GestureDetector(
+                        onTap: () => _scrollToSection(_visionKey),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOutCubic,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: _heroButtonHovered ? (isMobile ? 30 : 40) : (isMobile ? 24 : 32),
+                            vertical: isMobile ? 12 : 16,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
-                              blurRadius: 20 + 10 * _pulseController.value,
-                              spreadRadius: 2 + 2 * _pulseController.value,
+                          decoration: BoxDecoration(
+                            color: _heroButtonHovered 
+                                ? Colors.deepPurple.withOpacity(0.8)
+                                : Colors.deepPurple.withOpacity(0.6),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.deepPurple.shade300,
+                              width: 1.5,
                             ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.currency_exchange,
-                              color: Colors.deepPurple.shade100,
-                              size: 36,
-                            ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Trading Hub',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.deepPurple.withOpacity(_heroButtonHovered ? 0.5 : 0.3),
+                                blurRadius: _heroButtonHovered ? 25 : 15,
+                                spreadRadius: _heroButtonHovered ? 1 : -2,
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                isMobile ? 'Discover More' : 'Discover the Future of Energy',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: Responsive.getFontSize(context, 16),
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: _heroButtonHovered ? 1.5 : 1.0,
+                                ),
+                              ),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                width: _heroButtonHovered ? 12 : 0,
+                              ),
+                              AnimatedOpacity(
+                                opacity: _heroButtonHovered ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 200),
+                                child: const Icon(
+                                  Icons.arrow_forward,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
                 ),
                 
-                // Animated energy flow lines
-                ...List.generate(8, (index) {
-                  final angle = (index / 8) * 2 * math.pi;
-                  return AnimatedBuilder(
-                    animation: _waveController,
-                    builder: (context, child) {
-                      final animValue = (_waveController.value + index / 8) % 1.0;
-                      final center = Offset(
-                        MediaQuery.of(context).size.width / 2,
-                        250,
-                      );
-                      final startRadius = 30.0;
-                      final endRadius = 200.0;
-                      
-                      final startPoint = Offset(
-                        center.dx + startRadius * math.cos(angle),
-                        center.dy + startRadius * math.sin(angle),
-                      );
-                      
-                      final endPoint = Offset(
-                        center.dx + endRadius * math.cos(angle),
-                        center.dy + endRadius * math.sin(angle),
-                      );
-                      
-                      // Calculate point along the line based on animation value
-                      final currentPoint = Offset(
-                        startPoint.dx + (endPoint.dx - startPoint.dx) * animValue,
-                        startPoint.dy + (endPoint.dy - startPoint.dy) * animValue,
-                      );
-                      
-                      return CustomPaint(
-                        painter: EnergyPulsePainter(
-                          startPoint: startPoint,
-                          endPoint: endPoint,
-                          currentPoint: currentPoint,
-                          color: Colors.deepPurple.withOpacity(0.8),
-                          directionToHub: index % 2 == 0,
+                SizedBox(height: isMobile ? 50 : 100),
+                
+                // Scroll indicator with fluid animation
+                AnimatedBuilder(
+                  animation: _floatController,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(0, 8 * math.sin(_floatController.value * math.pi)),
+                      child: AnimatedOpacity(
+                        opacity: 0.7 + 0.3 * math.sin(_floatController.value * math.pi),
+                        duration: Duration.zero,
+                        child: const Icon(
+                          Icons.expand_more,
+                          color: Colors.white,
+                          size: 36,
                         ),
-                      );
-                    },
-                  );
-                }),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
           ),
-          
-          const SizedBox(height: 80),
-          
-          // Transformation benefits
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isMobile = constraints.maxWidth < 700;
-              return isMobile
-                  ? _buildMobileTransformationBenefits()
-                  : _buildDesktopTransformationBenefits();
-            },
-          ),
-        ],
+        ),
       ),
-    );
-  }
+    ],
+  );
+}
+
+  Widget _buildEnergyTransformationSection() {
+  final isMobile = Responsive.isMobile(context);
+  
+  return Container(
+    key: _visionKey,
+    padding: Responsive.getScreenPadding(context).copyWith(
+      top: isMobile ? 60 : 100,
+      bottom: isMobile ? 60 : 100
+    ),
+    decoration: BoxDecoration(
+      color: Colors.black.withOpacity(0.2),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.5),
+          blurRadius: 50,
+          spreadRadius: -10,
+          offset: const Offset(0, -30),
+        ),
+      ],
+    ),
+    child: Column(
+      children: [
+        // Section title with reveal animation
+        RevealText(
+          'Energy Revolution',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: Responsive.getFontSize(context, isMobile ? 32 : 42),
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.5,
+          ),
+        ),
+        
+        const SizedBox(height: 40),
+        
+        // Description with fade animation
+        FadeSlideAnimation(
+          delay: const Duration(milliseconds: 300),
+          child: SizedBox(
+            width: isMobile ? double.infinity : 800,
+            child: Text(
+              'PIONEER transforms conventional energy systems into dynamic, decentralized networks. Break free from unreliable centralized infrastructure and high costs with peer-to-peer energy trading.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: Responsive.getFontSize(context, isMobile ? 14 : 18),
+                color: Colors.white70,
+                fontWeight: FontWeight.w300,
+                height: 1.6,
+              ),
+            ),
+          ),
+        ),
+        
+        SizedBox(height: isMobile ? 50 : 80),
+        
+        // Microgrid visualization with interactive components - height needs to be adaptable for mobile
+        SizedBox(
+          height: isMobile ? 400 : 500,
+          child: Stack(
+            children: [
+              // Dynamic energy flow visualization
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([_rotateController, _pulseController]),
+                    builder: (context, child) {
+                      return CustomPaint(
+                        painter: EnergyFlowPainter(
+                          animation: _rotateController.value,
+                          pulseValue: _pulseController.value,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              
+              // Adjust positions for mobile screens
+              if (isMobile) _buildMobileEnergyNodes() else _buildDesktopEnergyNodes(),
+              
+              // Central trading hub with pulsing animation
+              Center(
+                child: AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) {
+                    return Container(
+                      padding: EdgeInsets.all(isMobile ? 20 : 30),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.deepPurple.withOpacity(0.5 + 0.3 * _pulseController.value),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
+                            blurRadius: 20 + 10 * _pulseController.value,
+                            spreadRadius: 2 + 2 * _pulseController.value,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.currency_exchange,
+                            color: Colors.deepPurple.shade100,
+                            size: isMobile ? 28 : 36,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Trading Hub',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: isMobile ? 12 : 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        SizedBox(height: isMobile ? 50 : 80),
+        
+        // Transformation benefits - already handles mobile vs desktop layouts
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final isMobile = constraints.maxWidth < 700;
+            return isMobile
+                ? _buildMobileTransformationBenefits()
+                : _buildDesktopTransformationBenefits();
+          },
+        ),
+      ],
+    ),
+  );
+}
+
+// Add these new methods for mobile and desktop energy nodes
+Widget _buildMobileEnergyNodes() {
+  final width = MediaQuery.of(context).size.width;
+  return Stack(
+    children: [
+      Positioned(
+        top: 60,
+        left: width * 0.1,
+        child: InteractiveEnergyNode(
+          label: 'Residential',
+          icon: Icons.home,
+          color: Colors.amber,
+          description: 'Homes generate and consume energy from renewable sources',
+          isMobile: true,
+        ),
+      ),
+      
+      Positioned(
+        top: 80,
+        right: width * 0.1,
+        child: InteractiveEnergyNode(
+          label: 'Solar Array',
+          icon: Icons.solar_power,
+          color: Colors.orange,
+          description: 'Clean energy generation with optimal sun tracking',
+          isMobile: true,
+        ),
+      ),
+      
+      Positioned(
+        bottom: 80,
+        left: width * 0.1,
+        child: InteractiveEnergyNode(
+          label: 'Business',
+          icon: Icons.business,
+          color: Colors.blue.shade300,
+          description: 'Commercial entities participate in the energy marketplace',
+          isMobile: true,
+        ),
+      ),
+      
+      Positioned(
+        bottom: 100,
+        right: width * 0.1,
+        child: InteractiveEnergyNode(
+          label: 'Energy Storage',
+          icon: Icons.battery_charging_full,
+          color: Colors.green.shade300,
+          description: 'Advanced battery systems store excess energy for peak demand',
+          isMobile: true,
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _buildDesktopEnergyNodes() {
+  final width = MediaQuery.of(context).size.width;
+  return Stack(
+    children: [
+      Positioned(
+        top: 80,
+        left: width * 0.15,
+        child: InteractiveEnergyNode(
+          label: 'Residential',
+          icon: Icons.home,
+          color: Colors.amber,
+          description: 'Homes generate and consume energy from renewable sources',
+        ),
+      ),
+      
+      Positioned(
+        top: 120,
+        right: width * 0.15,
+        child: InteractiveEnergyNode(
+          label: 'Solar Array',
+          icon: Icons.solar_power,
+          color: Colors.orange,
+          description: 'Clean energy generation with optimal sun tracking',
+        ),
+      ),
+      
+      Positioned(
+        bottom: 120,
+        left: width * 0.2,
+        child: InteractiveEnergyNode(
+          label: 'Business',
+          icon: Icons.business,
+          color: Colors.blue.shade300,
+          description: 'Commercial entities participate in the energy marketplace',
+        ),
+      ),
+      
+      Positioned(
+        bottom: 140,
+        right: width * 0.2,
+        child: InteractiveEnergyNode(
+          label: 'Energy Storage',
+          icon: Icons.battery_charging_full,
+          color: Colors.green.shade300,
+          description: 'Advanced battery systems store excess energy for peak demand',
+        ),
+      ),
+    ],
+  );
+}
 
   Widget _buildMobileTransformationBenefits() {
     final benefits = _getTransformationBenefits();
@@ -1769,8 +1955,8 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
         title: 'P2P Energy Trading',
         description: 'Trade excess energy directly with neighbors through secure, automated smart contracts',
         stats: [
-          FeatureStat(value: '95%', label: 'Efficiency'),
-          FeatureStat(value: '-50%', label: 'Cost Reduction'),
+          FeatureStat(value: 'High', label: 'Efficiency'),
+          FeatureStat(value: 'Great', label: 'Cost Reduction'),
         ],
       ),
       FeatureData(
@@ -1778,8 +1964,8 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
         title: 'Real-time Monitoring',
         description: 'Monitor energy production, consumption, and market activity with millisecond precision',
         stats: [
-          FeatureStat(value: '1ms', label: 'Response Time'),
-          FeatureStat(value: '99.9%', label: 'Accuracy'),
+          FeatureStat(value: 'Low', label: 'Response Time'),
+          FeatureStat(value: 'High', label: 'Accuracy'),
         ],
       ),
       FeatureData(
@@ -1787,8 +1973,8 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
         title: 'AI Predictions',
         description: 'Advanced neural networks predict energy needs and optimize trading strategies',
         stats: [
-          FeatureStat(value: '94%', label: 'Accuracy'),
-          FeatureStat(value: '+25%', label: 'Efficiency Gain'),
+          FeatureStat(value: 'High', label: 'Accuracy'),
+          FeatureStat(value: 'Increased', label: 'Efficiency Gain'),
         ],
       ),
       FeatureData(
@@ -1796,8 +1982,8 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
         title: 'Military-grade Security',
         description: 'End-to-end encryption and blockchain verification protect all transactions',
         stats: [
-          FeatureStat(value: '256-bit', label: 'Encryption'),
-          FeatureStat(value: '0', label: 'Breaches'),
+          FeatureStat(value: 'Fortified', label: 'Encryption'),
+          FeatureStat(value: 'No', label: 'Breaches'),
         ],
       ),
       FeatureData(
@@ -1806,16 +1992,16 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
         description: 'Market-based pricing engine that adapts to real-time supply and demand conditions',
         stats: [
           FeatureStat(value: 'Real-time', label: 'Market Updates'),
-          FeatureStat(value: '-30%', label: 'Price Volatility'),
+          FeatureStat(value: 'Decreased', label: 'Price Volatility'),
         ],
       ),
       FeatureData(
-        icon: Icons.lightbulb,
-        title: 'Smart Load Management',
-        description: 'Automatically prioritize and schedule energy loads for optimal efficiency',
+        icon: Icons.chat,
+        title: 'Negotiation Chat Support',
+        description: 'Allows you to chat with other uses to create offers, or negotiate prices',
         stats: [
-          FeatureStat(value: '+40%', label: 'Efficiency'),
-          FeatureStat(value: '-35%', label: 'Peak Usage'),
+          FeatureStat(value: 'Increased', label: 'Efficiency'),
+          FeatureStat(value: 'More', label: 'Versatility'),
         ],
       ),
     ];
@@ -1955,229 +2141,271 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
   }
 
   Widget _buildContactSection() {
-    return Container(
-      key: _contactKey,
-      padding: const EdgeInsets.symmetric(vertical: 120, horizontal: 32),
-      child: Column(
-        children: [
-          // Section title with animated reveal
-          const RevealText(
-            'Connect With Us',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 42,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 1.5,
-            ),
+  final isMobile = Responsive.isMobile(context);
+  final isTablet = Responsive.isTablet(context);
+  
+  return Container(
+    key: _contactKey,
+    padding: EdgeInsets.symmetric(
+      vertical: isMobile ? 70 : (isTablet ? 90 : 120),
+      horizontal: isMobile ? 16 : 32
+    ),
+    child: Column(
+      children: [
+        // Section title with animated reveal
+        RevealText(
+          'Connect With Us',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: Responsive.getFontSize(context, isMobile ? 32 : 42),
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 1.5,
           ),
-          
-          const SizedBox(height: 40),
-          
-          // Description with animated fade in
-          const FadeSlideAnimation(
-            delay: Duration(milliseconds: 300),
-            child: SizedBox(
-              width: 800,
-              child: Text(
-                'Interested in learning more about PIONEER? Get in touch with our team to discuss how decentralized energy trading can transform your community.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Colors.white70,
-                  fontWeight: FontWeight.w300,
-                  height: 1.6,
-                ),
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 80),
-          
-          // Futuristic contact card
-          FadeSlideAnimation(
-            delay: const Duration(milliseconds: 500),
-            child: Container(
-              width: 650,
-              padding: const EdgeInsets.all(50),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: Colors.deepPurple.withOpacity(0.3),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.deepPurple.withOpacity(0.2),
-                    blurRadius: 30,
-                    spreadRadius: -5,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  // Animated holographic email button
-                  GestureDetector(
-                    onTap: _launchEmail,
-                    child: AnimatedBuilder(
-                      animation: Listenable.merge([_pulseController, _rotateController]),
-                      builder: (context, child) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 30,
-                            vertical: 20,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.4),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
-                              width: 1.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.deepPurple.withOpacity(0.2 + 0.1 * _pulseController.value),
-                                blurRadius: 15 + 5 * _pulseController.value,
-                                spreadRadius: 0,
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.deepPurple.withOpacity(0.2),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.email_outlined,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 20),
-                              const Text(
-                                'equilux.energy.dev@gmail.com',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  
-                  const SizedBox(height: 60),
-                  
-                  // About section
-                  const Column(
-                    children: [
-                      Text(
-                        'About Equilux Energy',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      SizedBox(height: 20),
-                      Text(
-                        'We are a team of innovative engineers and energy experts committed to transforming how energy is distributed, traded, and consumed. Our mission is to create a more sustainable, efficient, and equitable energy ecosystem through cutting-edge technology.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.white70,
-                          height: 1.6,
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 60),
-                  
-                  // Action button
-                  GestureDetector(
-                    onTap: _launchEmail,
-                    child: AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 36,
-                            vertical: 18,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.deepPurple.withOpacity(0.8 + 0.2 * _pulseController.value),
-                                Colors.deepPurple.shade900.withOpacity(0.8 + 0.2 * _pulseController.value),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(30),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
-                                blurRadius: 15 + 5 * _pulseController.value,
-                                spreadRadius: 0,
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.send,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                'Contact Us',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 100),
-          
-          // Footer
-          const FadeSlideAnimation(
-            delay: Duration(milliseconds: 700),
+        ),
+        
+        SizedBox(height: isMobile ? 30 : 40),
+        
+        // Description with animated fade in
+        FadeSlideAnimation(
+          delay: const Duration(milliseconds: 300),
+          child: SizedBox(
+            width: isMobile ? double.infinity : (isTablet ? 600 : 800),
             child: Text(
-              '© 2025 Equilux Energy. All rights reserved.',
+              'Interested in learning more about PIONEER? Get in touch with our team to discuss how decentralized energy trading can transform your community.',
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 14,
-                color: Colors.white38,
+                fontSize: Responsive.getFontSize(context, isMobile ? 14 : 18),
+                color: Colors.white70,
+                fontWeight: FontWeight.w300,
+                height: 1.6,
               ),
             ),
           ),
-        ],
+        ),
+        
+        SizedBox(height: isMobile ? 50 : 80),
+        
+        // Futuristic contact card
+        FadeSlideAnimation(
+          delay: const Duration(milliseconds: 500),
+          child: Container(
+            width: isMobile ? double.infinity : (isTablet ? 550 : 650),
+            padding: EdgeInsets.all(isMobile ? 30 : 50),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(
+                color: Colors.deepPurple.withOpacity(0.3),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.deepPurple.withOpacity(0.2),
+                  blurRadius: 30,
+                  spreadRadius: -5,
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Animated holographic email button - FIXED FOR MOBILE
+                GestureDetector(
+                  onTap: _launchEmail,
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([_pulseController, _rotateController]),
+                    builder: (context, child) {
+                      return Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 20 : 30,
+                          vertical: isMobile ? 15 : 20,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.2 + 0.1 * _pulseController.value),
+                              blurRadius: 15 + 5 * _pulseController.value,
+                              spreadRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: isMobile
+                            ? _buildMobileEmailContent()
+                            : _buildDesktopEmailContent(),
+                      );
+                    },
+                  ),
+                ),
+                
+                SizedBox(height: isMobile ? 40 : 60),
+                
+                // About section
+                Column(
+                  children: [
+                    Text(
+                      'About Equilux Energy',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: Responsive.getFontSize(context, isMobile ? 20 : 24),
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: isMobile ? 15 : 20),
+                    Text(
+                      'We are a team of innovative engineers and energy experts committed to transforming how energy is distributed, traded, and consumed. Our mission is to create a more sustainable, efficient, and equitable energy ecosystem through cutting-edge technology.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: Responsive.getFontSize(context, isMobile ? 14 : 16),
+                        color: Colors.white70,
+                        height: 1.6,
+                      ),
+                    ),
+                  ],
+                ),
+                
+                SizedBox(height: isMobile ? 40 : 60),
+                
+                // Action button
+                GestureDetector(
+                  onTap: _launchEmail,
+                  child: AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, child) {
+                      return Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isMobile ? 28 : 36,
+                          vertical: isMobile ? 14 : 18,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.deepPurple.withOpacity(0.8 + 0.2 * _pulseController.value),
+                              Colors.deepPurple.shade900.withOpacity(0.8 + 0.2 * _pulseController.value),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(30),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.deepPurple.withOpacity(0.3 + 0.2 * _pulseController.value),
+                              blurRadius: 15 + 5 * _pulseController.value,
+                              spreadRadius: 0,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.send,
+                              color: Colors.white,
+                              size: isMobile ? 16 : 20,
+                            ),
+                            SizedBox(width: isMobile ? 8 : 12),
+                            Text(
+                              'Contact Us',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: Responsive.getFontSize(context, isMobile ? 14 : 16),
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        SizedBox(height: isMobile ? 70 : 100),
+        
+        // Footer
+        FadeSlideAnimation(
+          delay: const Duration(milliseconds: 700),
+          child: Text(
+            '© 2025 Equilux Energy. All rights reserved.',
+            style: TextStyle(
+              fontSize: Responsive.getFontSize(context, isMobile ? 12 : 14),
+              color: Colors.white38,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+// Add these methods to handle different layouts for the email section
+Widget _buildMobileEmailContent() {
+  return Column(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.deepPurple.withOpacity(0.2),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.email_outlined,
+          color: Colors.white,
+          size: 20,
+        ),
       ),
-    );
-  }
+      const SizedBox(height: 12),
+      const Text(
+        'equilux.energy.dev@gmail.com',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.white,
+          fontWeight: FontWeight.w400,
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _buildDesktopEmailContent() {
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.deepPurple.withOpacity(0.2),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.email_outlined,
+          color: Colors.white,
+          size: 24,
+        ),
+      ),
+      const SizedBox(width: 20),
+      const Text(
+        'equilux.energy.dev@gmail.com',
+        style: TextStyle(
+          fontSize: 18,
+          color: Colors.white,
+          fontWeight: FontWeight.w400,
+        ),
+      ),
+    ],
+  );
+}
 }
 
 // ========== CUSTOM WIDGETS ==========
@@ -2521,6 +2749,7 @@ class InteractiveEnergyNode extends StatefulWidget {
   final IconData icon;
   final Color color;
   final String description;
+  final bool isMobile;
   
   const InteractiveEnergyNode({
     super.key,
@@ -2528,6 +2757,7 @@ class InteractiveEnergyNode extends StatefulWidget {
     required this.icon,
     required this.color,
     required this.description,
+    this.isMobile = false,
   });
 
   @override
@@ -2566,6 +2796,8 @@ class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with Sing
   
   @override
   Widget build(BuildContext context) {
+    final size = widget.isMobile ? 0.8 : 1.0; // Scale for mobile
+    
     return MouseRegion(
       onEnter: (_) {
         setState(() {
@@ -2587,7 +2819,7 @@ class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with Sing
             scale: _scaleAnimation,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.all(20 * size),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.6),
                 shape: BoxShape.circle,
@@ -2606,18 +2838,18 @@ class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with Sing
               child: Icon(
                 widget.icon,
                 color: widget.color,
-                size: 30,
+                size: 30 * size,
               ),
             ),
           ),
           
-          const SizedBox(height: 12),
+          SizedBox(height: 12 * size),
           
           // Label
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 6,
+            padding: EdgeInsets.symmetric(
+              horizontal: 14 * size,
+              vertical: 6 * size,
             ),
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.6),
@@ -2632,12 +2864,12 @@ class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with Sing
               style: TextStyle(
                 color: widget.color,
                 fontWeight: FontWeight.w500,
-                fontSize: 14,
+                fontSize: 14 * size,
               ),
             ),
           ),
           
-          // Description tooltip - FIXED VERSION
+          // Description tooltip - FIXED VERSION for mobile and desktop
           AnimatedOpacity(
             opacity: _isHovered ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
@@ -2645,12 +2877,12 @@ class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with Sing
               ignoring: !_isHovered,
               child: Container(
                 constraints: BoxConstraints(
-                  maxWidth: 200,
+                  maxWidth: widget.isMobile ? 150 : 200,
                   minHeight: 0,
                   maxHeight: _isHovered ? double.infinity : 0,
                 ),
-                margin: const EdgeInsets.only(top: 8),
-                padding: EdgeInsets.all(_isHovered ? 12 : 0),
+                margin: EdgeInsets.only(top: 8 * size),
+                padding: EdgeInsets.all(_isHovered ? (widget.isMobile ? 8 : 12) : 0),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(10),
@@ -2664,7 +2896,7 @@ class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with Sing
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
-                    fontSize: 12,
+                    fontSize: widget.isMobile ? 10 : 12,
                   ),
                 ) : const SizedBox(),
               ),
@@ -2682,6 +2914,7 @@ class TechOrbitalItem extends StatefulWidget {
   final Color color;
   final String description;
   final AnimationController pulseController;
+  final bool isMobile;
   
   const TechOrbitalItem({
     super.key,
@@ -2690,6 +2923,7 @@ class TechOrbitalItem extends StatefulWidget {
     required this.color,
     required this.description,
     required this.pulseController,
+    this.isMobile = false,
   });
 
   @override
@@ -2701,6 +2935,8 @@ class _TechOrbitalItemState extends State<TechOrbitalItem> {
   
   @override
   Widget build(BuildContext context) {
+    final size = widget.isMobile ? 0.8 : 1.0; // Scale for mobile
+    
     return MouseRegion(
       onEnter: (_) {
         setState(() {
@@ -2721,7 +2957,7 @@ class _TechOrbitalItemState extends State<TechOrbitalItem> {
             builder: (context, child) {
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16 * size),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.6),
                   shape: BoxShape.circle,
@@ -2740,19 +2976,19 @@ class _TechOrbitalItemState extends State<TechOrbitalItem> {
                 child: Icon(
                   widget.icon,
                   color: widget.color,
-                  size: 24,
+                  size: 24 * size,
                 ),
               );
             },
           ),
           
-          const SizedBox(height: 10),
+          SizedBox(height: 10 * size),
           
           // Label
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 5,
+            padding: EdgeInsets.symmetric(
+              horizontal: 12 * size,
+              vertical: 5 * size,
             ),
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.6),
@@ -2767,12 +3003,12 @@ class _TechOrbitalItemState extends State<TechOrbitalItem> {
               style: TextStyle(
                 color: widget.color,
                 fontWeight: FontWeight.w500,
-                fontSize: 12,
+                fontSize: 12 * size,
               ),
             ),
           ),
           
-          // Description tooltip
+          // Description tooltip - FIXED for mobile
           AnimatedOpacity(
             opacity: _isHovered ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
@@ -2780,12 +3016,12 @@ class _TechOrbitalItemState extends State<TechOrbitalItem> {
               ignoring: !_isHovered,
               child: Container(
                 constraints: BoxConstraints(
-                  maxWidth: 180,
+                  maxWidth: widget.isMobile ? 140 : 180,
                   minHeight: 0,
                   maxHeight: _isHovered ? double.infinity : 0,
                 ),
-                margin: const EdgeInsets.only(top: 8),
-                padding: EdgeInsets.all(_isHovered ? 10 : 0),
+                margin: EdgeInsets.only(top: 8 * size),
+                padding: EdgeInsets.all(_isHovered ? (widget.isMobile ? 8 : 10) : 0),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.8),
                   borderRadius: BorderRadius.circular(8),
@@ -2799,7 +3035,7 @@ class _TechOrbitalItemState extends State<TechOrbitalItem> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
-                    fontSize: 12,
+                    fontSize: widget.isMobile ? 10 : 12,
                   ),
                 ) : const SizedBox(),
               ),
@@ -3635,4 +3871,31 @@ class FeatureStat {
     required this.value,
     required this.label,
   });
+}
+
+// Add this helper class at the bottom of your file
+class Responsive {
+  static bool isMobile(BuildContext context) => MediaQuery.of(context).size.width < 650;
+  static bool isTablet(BuildContext context) => MediaQuery.of(context).size.width >= 650 && MediaQuery.of(context).size.width < 1100;
+  static bool isDesktop(BuildContext context) => MediaQuery.of(context).size.width >= 1100;
+  
+  static double getWidth(BuildContext context) => MediaQuery.of(context).size.width;
+  
+  static double getFontSize(BuildContext context, double desktopSize) {
+    if (isMobile(context)) {
+      return math.max(desktopSize * 0.7, 10.0); // At least 10px
+    } else if (isTablet(context)) {
+      return math.max(desktopSize * 0.85, 12.0); // At least 12px
+    }
+    return desktopSize;
+  }
+  
+  static EdgeInsets getScreenPadding(BuildContext context) {
+    if (isMobile(context)) {
+      return const EdgeInsets.symmetric(horizontal: 16, vertical: 16);
+    } else if (isTablet(context)) {
+      return const EdgeInsets.symmetric(horizontal: 24, vertical: 20);
+    }
+    return const EdgeInsets.symmetric(horizontal: 32, vertical: 24);
+  }
 }
