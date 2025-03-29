@@ -1076,12 +1076,14 @@ Widget _buildDesktopAppBarContent() {
         
         SizedBox(height: isMobile ? 50 : 80),
         
-        // Microgrid visualization with interactive components - height needs to be adaptable for mobile
+        // Microgrid visualization with interactive components
         SizedBox(
-          height: isMobile ? 400 : 500,
+          height: isMobile ? 450 : 500,  // Increase height for mobile
           child: Stack(
+            // Important: This makes tooltip positioning work properly relative to the Stack
+            clipBehavior: Clip.none,
             children: [
-              // Dynamic energy flow visualization
+              // Dynamic energy flow visualization - LAYER 1 (BOTTOM)
               Positioned.fill(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(30),
@@ -1099,10 +1101,7 @@ Widget _buildDesktopAppBarContent() {
                 ),
               ),
               
-              // Adjust positions for mobile screens
-              if (isMobile) _buildMobileEnergyNodes() else _buildDesktopEnergyNodes(),
-              
-              // Central trading hub with pulsing animation
+              // Central trading hub with pulsing animation - LAYER 2 (MIDDLE)
               Center(
                 child: AnimatedBuilder(
                   animation: _pulseController,
@@ -1147,6 +1146,10 @@ Widget _buildDesktopAppBarContent() {
                   },
                 ),
               ),
+              
+              // Interactive energy nodes - LAYER 3 (TOP)
+              // Use our updated node positioning that pushes nodes further away from center
+              if (isMobile) _buildMobileEnergyNodes() else _buildDesktopEnergyNodes(),
             ],
           ),
         ),
@@ -1168,61 +1171,77 @@ Widget _buildDesktopAppBarContent() {
 }
 
 // Add these new methods for mobile and desktop energy nodes
+// Updated method for mobile energy nodes
 Widget _buildMobileEnergyNodes() {
   final width = MediaQuery.of(context).size.width;
   return Stack(
+    // Critical for ensuring tooltips are properly positioned
+    clipBehavior: Clip.none,
     children: [
+      // Top left node - push further to the left and top
       Positioned(
-        top: 60,
-        left: width * 0.1,
+        top: 20,  // Move higher up
+        left: width * 0.05, // Push further left
         child: InteractiveEnergyNode(
           label: 'Residential',
           icon: Icons.home,
           color: Colors.amber,
           description: 'Homes generate and consume energy from renewable sources',
           isMobile: true,
+          tooltipDirection: TooltipDirection.right, // Tooltip appears to the right
+          zIndex: 5, // Ensure high z-index
         ),
       ),
       
+      // Top right node - push further to the right and top
       Positioned(
-        top: 80,
-        right: width * 0.1,
+        top: 20,  // Move higher up
+        right: width * 0.05, // Push further right
         child: InteractiveEnergyNode(
           label: 'Solar Array',
           icon: Icons.solar_power,
           color: Colors.orange,
           description: 'Clean energy generation with optimal sun tracking',
           isMobile: true,
+          tooltipDirection: TooltipDirection.left, // Tooltip appears to the left
+          zIndex: 5, // Ensure high z-index
         ),
       ),
       
+      // Bottom left node - push further to the left and bottom
       Positioned(
-        bottom: 80,
-        left: width * 0.1,
+        bottom: 20, // Move lower down
+        left: width * 0.05, // Push further left
         child: InteractiveEnergyNode(
           label: 'Business',
           icon: Icons.business,
           color: Colors.blue.shade300,
           description: 'Commercial entities participate in the energy marketplace',
           isMobile: true,
+          tooltipDirection: TooltipDirection.right, // Tooltip appears to the right
+          zIndex: 5, // Ensure high z-index
         ),
       ),
       
+      // Bottom right node - push further to the right and bottom
       Positioned(
-        bottom: 100,
-        right: width * 0.1,
+        bottom: 20, // Move lower down
+        right: width * 0.05, // Push further right
         child: InteractiveEnergyNode(
           label: 'Energy Storage',
           icon: Icons.battery_charging_full,
           color: Colors.green.shade300,
           description: 'Advanced battery systems store excess energy for peak demand',
           isMobile: true,
+          tooltipDirection: TooltipDirection.left, // Tooltip appears to the left
+          zIndex: 5, // Ensure high z-index
         ),
       ),
     ],
   );
 }
 
+// Updated method for desktop energy nodes
 Widget _buildDesktopEnergyNodes() {
   final width = MediaQuery.of(context).size.width;
   return Stack(
@@ -1235,39 +1254,43 @@ Widget _buildDesktopEnergyNodes() {
           icon: Icons.home,
           color: Colors.amber,
           description: 'Homes generate and consume energy from renewable sources',
+          tooltipDirection: TooltipDirection.bottomRight,
         ),
       ),
       
       Positioned(
-        top: 120,
+        top: 80,
         right: width * 0.15,
         child: InteractiveEnergyNode(
           label: 'Solar Array',
           icon: Icons.solar_power,
           color: Colors.orange,
           description: 'Clean energy generation with optimal sun tracking',
-        ),
-      ),
-      
-      Positioned(
-        bottom: 120,
-        left: width * 0.2,
-        child: InteractiveEnergyNode(
-          label: 'Business',
-          icon: Icons.business,
-          color: Colors.blue.shade300,
-          description: 'Commercial entities participate in the energy marketplace',
+          tooltipDirection: TooltipDirection.bottomLeft,
         ),
       ),
       
       Positioned(
         bottom: 140,
-        right: width * 0.2,
+        left: width * 0.15,
+        child: InteractiveEnergyNode(
+          label: 'Business',
+          icon: Icons.business,
+          color: Colors.blue.shade300,
+          description: 'Commercial entities participate in the energy marketplace',
+          tooltipDirection: TooltipDirection.topRight,
+        ),
+      ),
+      
+      Positioned(
+        bottom: 140,
+        right: width * 0.15,
         child: InteractiveEnergyNode(
           label: 'Energy Storage',
           icon: Icons.battery_charging_full,
           color: Colors.green.shade300,
           description: 'Advanced battery systems store excess energy for peak demand',
+          tooltipDirection: TooltipDirection.topLeft,
         ),
       ),
     ],
@@ -2744,12 +2767,27 @@ class FadeSlideAnimation extends StatelessWidget {
   }
 }
 
+// Define an enum for tooltip directions
+// Expand tooltip directions for more flexibility
+enum TooltipDirection {
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight,
+  left,
+  right,
+  top,
+  bottom,
+}
+
 class InteractiveEnergyNode extends StatefulWidget {
   final String label;
   final IconData icon;
   final Color color;
   final String description;
   final bool isMobile;
+  final TooltipDirection tooltipDirection;
+  final int zIndex; // Add z-index property
   
   const InteractiveEnergyNode({
     super.key,
@@ -2758,6 +2796,8 @@ class InteractiveEnergyNode extends StatefulWidget {
     required this.color,
     required this.description,
     this.isMobile = false,
+    this.tooltipDirection = TooltipDirection.bottomRight,
+    this.zIndex = 1, // Default z-index
   });
 
   @override
@@ -2766,6 +2806,7 @@ class InteractiveEnergyNode extends StatefulWidget {
 
 class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with SingleTickerProviderStateMixin {
   bool _isHovered = false;
+  bool _isPressed = false; // Track press for mobile
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   
@@ -2798,111 +2839,206 @@ class _InteractiveEnergyNodeState extends State<InteractiveEnergyNode> with Sing
   Widget build(BuildContext context) {
     final size = widget.isMobile ? 0.8 : 1.0; // Scale for mobile
     
-    return MouseRegion(
-      onEnter: (_) {
-        setState(() {
-          _isHovered = true;
-        });
-        _controller.forward();
-      },
-      onExit: (_) {
-        setState(() {
-          _isHovered = false;
-        });
-        _controller.reverse();
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Node
-          ScaleTransition(
-            scale: _scaleAnimation,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              padding: EdgeInsets.all(20 * size),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: widget.color.withOpacity(_isHovered ? 0.8 : 0.5),
-                  width: _isHovered ? 2.5 : 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: widget.color.withOpacity(_isHovered ? 0.5 : 0.2),
-                    blurRadius: _isHovered ? 20 : 10,
-                    spreadRadius: _isHovered ? 3 : 1,
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(60 * size),
+        onTap: () {
+          // Toggle pressed state for mobile tooltip display
+          setState(() {
+            _isPressed = !_isPressed;
+          });
+        },
+        onHover: (isHovering) {
+          setState(() {
+            _isHovered = isHovering;
+          });
+          if (isHovering) {
+            _controller.forward();
+          } else {
+            _controller.reverse();
+          }
+        },
+        child: Container(
+          // Set higher Z-index when hovered or pressed
+          foregroundDecoration: BoxDecoration(
+            color: Colors.transparent,
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Node
+                  ScaleTransition(
+                    scale: _scaleAnimation,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      padding: EdgeInsets.all(20 * size),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: widget.color.withOpacity((_isHovered || _isPressed) ? 0.8 : 0.5),
+                          width: (_isHovered || _isPressed) ? 2.5 : 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: widget.color.withOpacity((_isHovered || _isPressed) ? 0.5 : 0.2),
+                            blurRadius: (_isHovered || _isPressed) ? 20 : 10,
+                            spreadRadius: (_isHovered || _isPressed) ? 3 : 1,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        widget.icon,
+                        color: widget.color,
+                        size: 30 * size,
+                      ),
+                    ),
+                  ),
+                  
+                  SizedBox(height: 12 * size),
+                  
+                  // Label
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14 * size,
+                      vertical: 6 * size,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: widget.color.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      widget.label,
+                      style: TextStyle(
+                        color: widget.color,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 14 * size,
+                      ),
+                    ),
                   ),
                 ],
               ),
-              child: Icon(
-                widget.icon,
-                color: widget.color,
-                size: 30 * size,
+              
+              // Description tooltip with improved positioning
+              if ((_isHovered || _isPressed) && widget.description.isNotEmpty)
+                _buildPositionedTooltip(size),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPositionedTooltip(double size) {
+    // Calculate position based on tooltip direction
+    // Improved positioning to avoid central hub overlap
+    switch (widget.tooltipDirection) {
+      case TooltipDirection.left:
+        return Positioned(
+          right: 100 * size, // Push further left
+          top: 20 * size,
+          child: _buildTooltip(size),
+        );
+      
+      case TooltipDirection.right:
+        return Positioned(
+          left: 100 * size, // Push further right
+          top: 20 * size,
+          child: _buildTooltip(size),
+        );
+      
+      case TooltipDirection.top:
+        return Positioned(
+          bottom: 100 * size, // Push further up
+          left: 0,
+          child: _buildTooltip(size),
+        );
+      
+      case TooltipDirection.bottom:
+        return Positioned(
+          top: 100 * size, // Push further down
+          left: 0,
+          child: _buildTooltip(size),
+        );
+        
+      case TooltipDirection.topLeft:
+        return Positioned(
+          bottom: 90 * size,
+          right: 20 * size,
+          child: _buildTooltip(size),
+        );
+        
+      case TooltipDirection.topRight:
+        return Positioned(
+          bottom: 90 * size,
+          left: 20 * size,
+          child: _buildTooltip(size),
+        );
+        
+      case TooltipDirection.bottomLeft:
+        return Positioned(
+          top: 90 * size,
+          right: 20 * size,
+          child: _buildTooltip(size),
+        );
+        
+      case TooltipDirection.bottomRight:
+      default:
+        return Positioned(
+          top: 90 * size,
+          left: 20 * size,
+          child: _buildTooltip(size),
+        );
+    }
+  }
+  
+  Widget _buildTooltip(double size) {
+    // Higher elevation tooltip with better visibility
+    return Material(
+      elevation: 8, // Add elevation to ensure it appears above other elements
+      color: Colors.transparent,
+      child: AnimatedOpacity(
+        opacity: (_isHovered || _isPressed) ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 200),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: widget.isMobile ? 150 : 200,
+            minHeight: 0,
+          ),
+          // Improved tooltip styling for visibility
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: widget.color.withOpacity(0.4),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 10,
+                spreadRadius: 1,
               ),
+            ],
+          ),
+          padding: EdgeInsets.all(widget.isMobile ? 8 : 12),
+          child: Text(
+            widget.description,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: widget.isMobile ? 10 : 12,
             ),
           ),
-          
-          SizedBox(height: 12 * size),
-          
-          // Label
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: 14 * size,
-              vertical: 6 * size,
-            ),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.6),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(
-                color: widget.color.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Text(
-              widget.label,
-              style: TextStyle(
-                color: widget.color,
-                fontWeight: FontWeight.w500,
-                fontSize: 14 * size,
-              ),
-            ),
-          ),
-          
-          // Description tooltip - FIXED VERSION for mobile and desktop
-          AnimatedOpacity(
-            opacity: _isHovered ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
-            child: IgnorePointer(
-              ignoring: !_isHovered,
-              child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: widget.isMobile ? 150 : 200,
-                  minHeight: 0,
-                  maxHeight: _isHovered ? double.infinity : 0,
-                ),
-                margin: EdgeInsets.only(top: 8 * size),
-                padding: EdgeInsets.all(_isHovered ? (widget.isMobile ? 8 : 12) : 0),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: widget.color.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: _isHovered ? Text(
-                  widget.description,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: widget.isMobile ? 10 : 12,
-                  ),
-                ) : const SizedBox(),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -3899,3 +4035,4 @@ class Responsive {
     return const EdgeInsets.symmetric(horizontal: 32, vertical: 24);
   }
 }
+
