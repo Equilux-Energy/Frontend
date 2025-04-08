@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../Services/cognito_service.dart';
 import '../Widgets/animated_background.dart';
 import 'signup_page.dart';
+import 'forgot_password_page.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -115,7 +116,22 @@ class _SignInPageState extends State<SignInPage> {
                                           ? 'Enter password'
                                           : null,
                                     ),
-                                    const SizedBox(height: 32),
+                                    const SizedBox(height: 8), // Smaller spacing
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (context) => const ForgotPasswordPage(),
+                                            ),
+                                          );
+                                        },
+                                        child: const Text('Forgot Password?'),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 24), // Keep spacing before button
                                     SizedBox(
                                       width: double.infinity,
                                       child: ElevatedButton(

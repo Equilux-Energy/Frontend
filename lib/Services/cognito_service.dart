@@ -146,6 +146,66 @@ class CognitoService {
     }
   }
 
+  // Initiate forgot password flow
+  Future<Map<String, dynamic>> forgotPassword({
+    required String username,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_cognitoUrl),
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.ForgotPassword',
+        },
+        body: jsonEncode({
+          'ClientId': _clientId,
+          'Username': username,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final errorBody = jsonDecode(response.body);
+        throw Exception(errorBody['message'] ?? 'Failed to initiate password reset');
+      }
+    } catch (e) {
+      throw Exception('Failed to initiate password reset: $e');
+    }
+  }
+
+  // Complete the forgot password flow with confirmation code and new password
+  Future<Map<String, dynamic>> confirmForgotPassword({
+    required String username,
+    required String confirmationCode,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse(_cognitoUrl),
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.ConfirmForgotPassword',
+        },
+        body: jsonEncode({
+          'ClientId': _clientId,
+          'Username': username,
+          'ConfirmationCode': confirmationCode,
+          'Password': newPassword,
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final errorBody = jsonDecode(response.body);
+        throw Exception(errorBody['message'] ?? 'Failed to confirm password reset');
+      }
+    } catch (e) {
+      throw Exception('Failed to confirm password reset: $e');
+    }
+  }
+
   // Method to check if user is logged in with valid token
   Future<bool> isAuthenticated() async {
     try {

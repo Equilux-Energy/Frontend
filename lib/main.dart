@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:test_web/Pages/landing_page.dart';
 import 'Pages/signup_page.dart';
 import 'Pages/verification_page.dart';
+import 'Pages/forgot_password_page.dart'; // Add this
+import 'Pages/reset_password_page.dart'; // Add this
 import 'Services/theme_provider.dart';
 import 'Pages/home_page.dart';
 import 'Pages/profile_page.dart';
@@ -36,6 +38,8 @@ class MyApp extends StatelessWidget {
               '/signin': (context) => const SignInPage(),
               '/signup': (context) => const SignUpPage(),
               '/verification': (context) => const VerificationPage(),
+              '/forgot-password': (context) => const ForgotPasswordPage(), // Add this
+              '/reset-password': (context) => const ResetPasswordPage(),   // Add this
               
               // Protected routes
               '/home': (context) => AuthGuard(
