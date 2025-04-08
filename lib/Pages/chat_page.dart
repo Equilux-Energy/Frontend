@@ -37,11 +37,13 @@ class ChatMessage {
 class ChatPage extends StatefulWidget {
   final String contactName;
   final String contactAvatar;
+  final Map<String, dynamic>? userData; // Optional user data
   
   const ChatPage({
     Key? key, 
     this.contactName = 'John Smith', // Default dummy name
     this.contactAvatar = '',
+    required this.userData,
   }) : super(key: key);
 
   @override

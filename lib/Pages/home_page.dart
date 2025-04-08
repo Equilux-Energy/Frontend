@@ -2,19 +2,28 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../Services/chart_card.dart';
+import '../Services/cognito_service.dart';
 import '../Services/metamask.dart';
 import '../Services/theme_provider.dart';
 import '../Widgets/animated_background.dart';
 import 'package:fl_chart/fl_chart.dart' as fl_chart;
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  final Map<String, dynamic> userData;
+  
+  const HomePage({
+    super.key, 
+    required this.userData,
+  });
 
   @override
 Widget build(BuildContext context) {
   final screenSize = MediaQuery.of(context).size;
   final bool isMobile = screenSize.width < 1100;
   final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  // Now you can use userData to display personalized content
+  final String username = userData['cognito:username'] ?? 'User';
 
   return ChangeNotifierProvider<MetaMaskProvider>(
     create: (context) => MetaMaskProvider()..init(),
@@ -83,11 +92,11 @@ Widget build(BuildContext context) {
           );
         },
       ),
-      title: const Row(
+      title: Row(
         children: [
-          FlutterLogo(size: 32),
-          SizedBox(width: 8),
-          Text('PIONEER Dashboard'),
+          const FlutterLogo(size: 32),
+          const SizedBox(width: 8),
+          Text('PIONEER Dashboard | Welcome ${userData['cognito:username']}'),
         ],
       ),
       actions: [
@@ -96,6 +105,13 @@ Widget build(BuildContext context) {
           onPressed: () {},
         ),
         _buildWalletButton(context),
+        IconButton(
+          icon: const Icon(Icons.logout),
+          onPressed: () async {
+            await CognitoService().signOut();
+            Navigator.of(context).pushReplacementNamed('/signin');
+          },
+        ),
       ],
     );
   }
@@ -122,7 +138,10 @@ Widget build(BuildContext context) {
           const SizedBox(width: 8),
           IconButton(
             icon: Icon(Icons.logout, color: themeProvider.textColor),
-            onPressed: () => Navigator.pushReplacementNamed(context, '/signin'),
+            onPressed: () async {
+              await CognitoService().signOut(); // Clear tokens first
+              Navigator.of(context).pushReplacementNamed('/signin');
+            },
           ),
         ],
       ),
@@ -246,7 +265,10 @@ Widget build(BuildContext context) {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            onPressed: () => Navigator.pushReplacementNamed(context, '/signin'),
+            onPressed: () async {
+              await CognitoService().signOut(); // Clear tokens first
+              Navigator.of(context).pushReplacementNamed('/signin');
+            },
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

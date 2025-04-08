@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../Services/cognito_service.dart';
 import '../Services/metamask.dart';
 import '../Widgets/animated_background.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final Map<String, dynamic> userData;
+  
+  const ProfilePage({
+    super.key, 
+    required this.userData,
+  });
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -13,19 +19,8 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final _formKey = GlobalKey<FormState>();
   
-  // User profile data
-  final Map<String, dynamic> _userData = {
-    'firstName': 'Alex',
-    'lastName': 'Johnson',
-    'email': 'alex.johnson@example.com',
-    'username': 'alexenergy',
-    'address': '0x7a3Bc4f41E5996C6d7d3Bc4F42c',
-    'profilePicUrl': 'https://i.pravatar.cc/150?img=11',
-    'energyProduced': 1240.5,
-    'energyConsumed': 890.2,
-    'tokensEarned': 250,
-    'joinDate': DateTime(2024, 1, 15),
-  };
+  // User profile data - merge with Cognito data in initState
+  late Map<String, dynamic> _userData;
   
   bool _isEditing = false;
   late TextEditingController _firstNameController;
@@ -36,6 +31,22 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
+    
+    // Initialize the user data with some defaults, then merge with Cognito data
+    _userData = {
+      'firstName': 'Alex',
+      'lastName': 'Johnson',
+      'email': widget.userData['email'] ?? 'alex.johnson@example.com',
+      'username': widget.userData['cognito:username'] ?? 'alexenergy',
+      'address': '0x7a3Bc4f41E5996C6d7d3Bc4F42c',
+      'profilePicUrl': 'https://i.pravatar.cc/150?img=11',
+      'energyProduced': 1240.5,
+      'energyConsumed': 890.2,
+      'tokensEarned': 250,
+      'joinDate': DateTime(2024, 1, 15),
+    };
+    
+    // Initialize controllers with potentially merged data
     _firstNameController = TextEditingController(text: _userData['firstName']);
     _lastNameController = TextEditingController(text: _userData['lastName']);
     _emailController = TextEditingController(text: _userData['email']);

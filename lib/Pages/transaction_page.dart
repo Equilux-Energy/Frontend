@@ -5,7 +5,8 @@ import '../Widgets/animated_background.dart';
 import 'package:intl/intl.dart';
 
 class TransactionPage extends StatefulWidget {
-  const TransactionPage({super.key});
+  final Map<String, dynamic> userData;
+  const TransactionPage({super.key, required this.userData});
 
   @override
   State<TransactionPage> createState() => _TransactionPageState();

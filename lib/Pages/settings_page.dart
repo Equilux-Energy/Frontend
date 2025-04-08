@@ -5,7 +5,8 @@ import '../Services/theme_provider.dart';
 import '../Widgets/animated_background.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key});
+  final Map<String, dynamic> userData;
+  const SettingsPage({super.key, required this.userData});  
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();

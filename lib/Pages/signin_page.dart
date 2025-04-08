@@ -1,5 +1,6 @@
 // signin_page.dart
 import 'package:flutter/material.dart';
+import '../Services/cognito_service.dart';
 import '../Widgets/animated_background.dart';
 import 'signup_page.dart';
 
@@ -12,16 +13,47 @@ class SignInPage extends StatefulWidget {
 
 class _SignInPageState extends State<SignInPage> {
   final _formKey = GlobalKey<FormState>();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _isLoading = false;
+  final _cognitoService = CognitoService();
 
-  void _submit() {
+  void _submit() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-      Future.delayed(const Duration(seconds: 1), () {
-        setState(() => _isLoading = false);
-        Navigator.pushReplacementNamed(context, '/home');
-      });
+      
+      try {
+        await _cognitoService.signIn(
+          username: _usernameController.text,
+          password: _passwordController.text,
+        );
+        
+        if (mounted) {
+          // Navigate to home on successful login
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
     }
+  }
+  
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -62,21 +94,25 @@ class _SignInPageState extends State<SignInPage> {
                                 child: Column(
                                   children: [
                                     TextFormField(
+                                      controller: _usernameController,
                                       decoration: const InputDecoration(
-                                          labelText: 'Email',
-                                          prefixIcon: Icon(Icons.email)),
+                                        labelText: 'Username',
+                                        prefixIcon: Icon(Icons.person),
+                                      ),
                                       validator: (value) => value!.isEmpty
-                                          ? 'Enter email'
+                                          ? 'Enter username'
                                           : null,
                                     ),
                                     const SizedBox(height: 16),
                                     TextFormField(
+                                      controller: _passwordController,
                                       obscureText: true,
                                       decoration: const InputDecoration(
-                                          labelText: 'Password',
-                                          prefixIcon: Icon(Icons.lock)),
-                                      validator: (value) => value!.length < 6
-                                          ? 'Minimum 6 characters'
+                                        labelText: 'Password',
+                                        prefixIcon: Icon(Icons.lock),
+                                      ),
+                                      validator: (value) => value!.isEmpty
+                                          ? 'Enter password'
                                           : null,
                                     ),
                                     const SizedBox(height: 32),
