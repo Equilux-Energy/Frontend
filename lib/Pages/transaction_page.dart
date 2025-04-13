@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../Services/cognito_service.dart';
 import '../Services/metamask.dart';
+import '../Services/theme_provider.dart';
 import '../Widgets/animated_background.dart';
 import 'package:intl/intl.dart';
+
+import '../Widgets/animated_background_light.dart';
 
 class TransactionPage extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -200,13 +204,15 @@ class _TransactionPageState extends State<TransactionPage> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final bool isMobile = screenSize.width < 1100;
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.isDarkMode;
 
     return ChangeNotifierProvider<MetaMaskProvider>(
       create: (context) => MetaMaskProvider()..init(),
       builder: (context, child) {
         return Stack(
           children: [
-            const AnimatedBackground(),
+            if (isDarkMode) const AnimatedBackground() else const AnimatedBackgroundLight(),
             Scaffold(
               backgroundColor: Colors.transparent,
               appBar: isMobile ? _buildAppBar(context) : null,
@@ -234,8 +240,8 @@ class _TransactionPageState extends State<TransactionPage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Energy Transactions', 
-                                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+                                Text('Energy Transactions', 
+                                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
                                 ElevatedButton.icon(
                                   onPressed: () => _showCreateOfferDialog(),
                                   icon: const Icon(Icons.add,color: Colors.white),
@@ -473,11 +479,11 @@ class _TransactionPageState extends State<TransactionPage> {
           );
         },
       ),
-      title: const Row(
+      title: Row(
         children: [
-          FlutterLogo(size: 32),
-          SizedBox(width: 8),
-          Text('PIONEER Dashboard'),
+          const FlutterLogo(size: 32),
+          const SizedBox(width: 8),
+          Text('PIONEER'),
         ],
       ),
       actions: [
@@ -485,40 +491,95 @@ class _TransactionPageState extends State<TransactionPage> {
           icon: const Icon(Icons.notifications),
           onPressed: () {},
         ),
-        _buildWalletButton(context),
-      ],
-    );
-  }
-  
-  Widget _buildTopBar(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('PIONEER Dashboard', 
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              onPressed: () {},
-            ),
-            IconButton(
-              icon: const Icon(Icons.notifications, color: Colors.white),
-              onPressed: () {},
-            ),
-            _buildWalletButton(context),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: () => Navigator.pushReplacementNamed(context, '/signin'),
-            ),
-          ],
+        _buildMobileWalletButton(context),
+        IconButton(
+          icon: const Icon(Icons.logout),
+          onPressed: () async {
+            await CognitoService().signOut();
+            if (context.mounted) {
+              Navigator.pushReplacementNamed(context, '/signin');
+            }
+          },
         ),
       ],
     );
   }
   
+  Widget _buildTopBar(BuildContext context) {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text('PIONEER Dashboard', 
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
+      Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.search, color: themeProvider.textColor),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: Icon(Icons.notifications, color: themeProvider.textColor),
+            onPressed: () {},
+          ),
+          _buildWalletButton(context),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(Icons.logout, color: themeProvider.textColor),
+            onPressed: () async {
+              await CognitoService().signOut(); // Clear tokens first
+              if (context.mounted) {
+                Navigator.pushReplacementNamed(context, '/signin');
+              }
+            },
+          ),
+        ],
+      ),
+    ],
+  );
+}
+  
   Widget _buildWalletButton(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    return Consumer<MetaMaskProvider>(
+      builder: (context, provider, child) {
+        if (provider.isConnected && provider.isInOperatingChain) {
+          return ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+            ),
+            onPressed: () {},
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+              child: Text(
+                '${provider.currentBalance} USD',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          );
+        } else if (provider.isEnabled) {
+          return IconButton(
+            icon: Icon(Icons.wallet, color: themeProvider.textColor),
+            onPressed: () => context.read<MetaMaskProvider>().connect(),
+          );
+        } else {
+          return const SizedBox.shrink();
+        }
+      },
+    );
+  }
+
+  Widget _buildMobileWalletButton(BuildContext context) {
     return Consumer<MetaMaskProvider>(
       builder: (context, provider, child) {
         if (provider.isConnected && provider.isInOperatingChain) {
@@ -611,14 +672,14 @@ class _TransactionPageState extends State<TransactionPage> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              _buildNavItem(context, 'Dashboard', Icons.dashboard, false, "/home"),
-              _buildNavItem(context, 'User Profile', Icons.person, false, ""),
-              _buildNavItem(context, 'Analytics', Icons.analytics, false, ""),
-              _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false, ""),
-              _buildNavItem(context, 'Transactions', Icons.history, true, "/transactions"),
-              _buildNavItem(context, 'Chat', Icons.chat, false, "/chat"),
-              _buildNavItem(context, 'Settings', Icons.settings, false, ""),
-              _buildNavItem(context, 'Support', Icons.support, false, ""),
+              _buildNavItem(context, 'Dashboard', Icons.dashboard, false,"/home"),
+              _buildNavItem(context, 'User Profile', Icons.person, false,"/profile"),
+              _buildNavItem(context, 'Analytics', Icons.analytics, false,""),
+              _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false,""),
+              _buildNavItem(context, 'Transactions', Icons.history, true,"/transactions"),
+              _buildNavItem(context, 'Chat', Icons.chat, false,"/chat"),
+              _buildNavItem(context, 'Settings', Icons.settings, false,"/settings"),
+              _buildNavItem(context, 'Support', Icons.support, false,""),
             ],
           ),
         ),
@@ -664,10 +725,12 @@ class _TransactionPageState extends State<TransactionPage> {
       ),
       tileColor: isActive ? Colors.purple.withOpacity(0.3) : Colors.transparent,
       onTap: () {
-        // Handle navigation
-        if (route.isNotEmpty) {
-          Navigator.pushNamed(context, route);
-        }
+        // Example of navigation from HomePage to ProfilePage with userData
+        Navigator.pushNamed(
+          context, 
+          route,
+          arguments: widget.userData
+        );
       },
     );
   }

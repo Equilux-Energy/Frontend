@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'jwt_service.dart';
+import 'user_service.dart';
 
 class CognitoService {
   static const String _cognitoUrl = 'https://cognito-idp.eu-west-1.amazonaws.com/';
   static const String _clientId = '2et6pcpoin606ul2evqm5lqb2g';
+  
+  final UserService _userService = UserService();
   
   Future<Map<String, dynamic>> signUp({
     required String username,
@@ -127,15 +131,18 @@ class CognitoService {
       
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
+        
         // Store auth tokens
         final authResult = responseData['AuthenticationResult'];
         if (authResult != null) {
+          // Store tokens immediately and synchronously
           await _storeTokens(
             accessToken: authResult['AccessToken'],
             idToken: authResult['IdToken'],
             refreshToken: authResult['RefreshToken'],
           );
         }
+        
         return responseData;
       } else {
         final errorBody = jsonDecode(response.body);
@@ -206,38 +213,117 @@ class CognitoService {
     }
   }
 
-  // Method to check if user is logged in with valid token
+  // Simplified authentication check - just verify token exists
   Future<bool> isAuthenticated() async {
     try {
-      final token = await _getIdToken();
-      if (token == null) return false;
+      // Check if token exists
+      final prefs = await SharedPreferences.getInstance();
+      final idToken = prefs.getString('id_token');
+      final refreshToken = prefs.getString('refresh_token');
       
-      // Verify the token with JWKS
-      await JwtService.verifyToken(token);
-      return true;
+      // No tokens stored
+      if (idToken == null || refreshToken == null) {
+        return false;
+      }
+      
+      // Check if token is expired by trying to decode it
+      try {
+        // Simple JWT structure check - not a full validation
+        final parts = idToken.split('.');
+        if (parts.length != 3) return false;
+        
+        // Parse the payload
+        final payload = parts[1];
+        final normalized = base64Url.normalize(payload);
+        final decoded = utf8.decode(base64Url.decode(normalized));
+        final Map<String, dynamic> json = jsonDecode(decoded);
+        
+        // Check expiration
+        final exp = json['exp'];
+        if (exp == null) return false;
+        
+        final expiry = DateTime.fromMillisecondsSinceEpoch(exp * 1000);
+        final now = DateTime.now();
+        
+        // If token is not expired, user is authenticated
+        if (expiry.isAfter(now)) {
+          return true;
+        }
+        
+        // Token is expired, try to refresh
+        final refreshed = await _refreshToken(refreshToken);
+        return refreshed;
+      } catch (e) {
+        debugPrint('Token validation error: $e');
+        
+        // Try to refresh token if parsing fails
+        return await _refreshToken(refreshToken);
+      }
     } catch (e) {
-      print('Authentication verification failed: $e');
+      debugPrint('Authentication check error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _refreshToken(String refreshToken) async {
+    try {
+      // Implement token refresh using Cognito API
+      final response = await http.post(
+        Uri.parse('https://cognito-idp.eu-west-1.amazonaws.com/'),
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+        },
+        body: jsonEncode({
+          'AuthFlow': 'REFRESH_TOKEN_AUTH',
+          'ClientId': _clientId, // Use the class constant instead of 'YOUR_CLIENT_ID'
+          'AuthParameters': {
+            'REFRESH_TOKEN': refreshToken
+          }
+        }),
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> result = jsonDecode(response.body);
+        final authResult = result['AuthenticationResult'];
+        
+        if (authResult != null) {
+          // Save new tokens
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('id_token', authResult['IdToken']);
+          await prefs.setString('access_token', authResult['AccessToken']);
+          
+          // Refresh token remains the same
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (e) {
+      debugPrint('Token refresh error: $e');
       return false;
     }
   }
 
   // Get user information from the token
   Future<Map<String, dynamic>?> getUserInfo() async {
+    final token = await _getIdToken();
+    if (token == null) return null;
+    
     try {
-      final token = await _getIdToken();
-      if (token == null) return null;
-      
-      // Verify and decode the token
       return await JwtService.verifyToken(token);
     } catch (e) {
-      print('Failed to get user info: $e');
       return null;
     }
   }
 
   // Method to logout
   Future<void> signOut() async {
-    await _clearTokens();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('access_token');
+    await prefs.remove('id_token');
+    await prefs.remove('refresh_token');
+    await _userService.clearUserData();
   }
 
   // Token storage methods
@@ -246,8 +332,8 @@ class CognitoService {
     required String idToken,
     required String refreshToken,
   }) async {
-    // For now using shared_preferences, but should use secure storage in production
     final prefs = await SharedPreferences.getInstance();
+    // Use synchronous set operations and ensure they complete
     await prefs.setString('access_token', accessToken);
     await prefs.setString('id_token', idToken);
     await prefs.setString('refresh_token', refreshToken);
@@ -273,5 +359,44 @@ class CognitoService {
     await prefs.remove('access_token');
     await prefs.remove('id_token');
     await prefs.remove('refresh_token');
+  }
+
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      // Get the current access token (not ID token)
+      final accessToken = await _getAccessToken();
+      if (accessToken == null) {
+        throw Exception('No access token available');
+      }
+
+      debugPrint('Changing password with token: ${accessToken.substring(0, 10)}...');
+
+      // Prepare the request
+      final response = await http.post(
+        Uri.parse('https://cognito-idp.eu-west-1.amazonaws.com/'),
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.ChangePassword',
+        },
+        body: jsonEncode({
+          'AccessToken': accessToken,
+          'PreviousPassword': currentPassword,
+          'ProposedPassword': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to change password');
+      }
+    } catch (e) {
+      debugPrint('Error changing password: $e');
+      throw Exception('Failed to change password: $e');
+    }
   }
 }

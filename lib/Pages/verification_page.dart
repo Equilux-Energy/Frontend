@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../Services/cognito_service.dart';
+import '../Services/theme_provider.dart';
 import '../Widgets/animated_background.dart';
+import '../Widgets/animated_background_light.dart';
 
 class VerificationPage extends StatefulWidget {
   const VerificationPage({super.key});
@@ -108,9 +111,12 @@ class _VerificationPageState extends State<VerificationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.isDarkMode;
+    
     return Stack(
       children: [
-        const AnimatedBackground(),
+        if (isDarkMode) const AnimatedBackground() else const AnimatedBackgroundLight(),
         Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(

@@ -45,6 +45,10 @@ class _EnergyConsumptionCardState extends State<EnergyConsumptionCard> {
 
   @override
   Widget build(BuildContext context) {
+    // Check if we're on a mobile device
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600; // Standard breakpoint for mobile
+    
     return Card(
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -76,17 +80,22 @@ class _EnergyConsumptionCardState extends State<EnergyConsumptionCard> {
                       color: Colors.white,
                     ),
                   ),
-                  Row(
-                    children: [
-                      _buildPeriodButton('Daily'),
-                      const SizedBox(width: 8),
-                      _buildPeriodButton('Weekly'),
-                      const SizedBox(width: 8),
-                      _buildPeriodButton('Monthly'),
-                    ],
-                  ),
+                  // Use dropdown for mobile, buttons for desktop
+                  isMobile
+                      ? _buildPeriodDropdown()
+                      : Row(
+                          children: [
+                            _buildPeriodButton('Daily'),
+                            const SizedBox(width: 8),
+                            _buildPeriodButton('Weekly'),
+                            const SizedBox(width: 8),
+                            _buildPeriodButton('Monthly'),
+                          ],
+                        ),
                 ],
               ),
+              
+              // Rest of the widget remains the same
               if (_chartData != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -103,6 +112,43 @@ class _EnergyConsumptionCardState extends State<EnergyConsumptionCard> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPeriodDropdown() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.purple.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.purple.withOpacity(0.5)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedPeriod,
+          dropdownColor: const Color(0xFF2A0030),
+          icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+          items: ['Daily', 'Weekly', 'Monthly'].map((String period) {
+            return DropdownMenuItem<String>(
+              value: period,
+              child: Text(
+                period,
+                style: TextStyle(
+                  color: _selectedPeriod == period ? Colors.white : Colors.grey,
+                  fontWeight: _selectedPeriod == period ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+            );
+          }).toList(),
+          onChanged: (String? newValue) {
+            if (newValue != null) {
+              setState(() {
+                _selectedPeriod = newValue;
+              });
+            }
+          },
         ),
       ),
     );

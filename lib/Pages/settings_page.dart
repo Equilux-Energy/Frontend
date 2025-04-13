@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../Services/cognito_service.dart';
 import '../Services/metamask.dart';
 import '../Services/theme_provider.dart';
+import '../Services/user_service.dart';
 import '../Widgets/animated_background.dart';
+import '../Widgets/animated_background_light.dart';
 
 class SettingsPage extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -14,6 +17,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   // User settings values
+  bool _isLoading = false;
   bool _emailNotifications = true;
   bool _pushNotifications = true;
   bool _tradesNotifications = true;
@@ -44,7 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
       builder: (context, child) {
         return Stack(
           children: [
-            if (isDarkMode) const AnimatedBackground() else Container(color: Colors.grey[100]),
+            if (isDarkMode) const AnimatedBackground() else const AnimatedBackgroundLight(),
             Scaffold(
               backgroundColor: Colors.transparent,
               appBar: isMobile ? _buildAppBar(context) : null,
@@ -253,6 +257,7 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: Icon(Icons.arrow_forward_ios, color: textColorSecondary, size: 16),
           onTap: () {
             // Navigate to change password screen or show dialog
+            showChangePasswordDialog(context);
           },
         ),
         const Divider(),
@@ -268,10 +273,53 @@ class _SettingsPageState extends State<SettingsPage> {
           title: Text('Delete Account', style: TextStyle(color: Colors.red)),
           subtitle: Text('Permanently remove your account and data', style: TextStyle(color: textColorSecondary)),
           trailing: Icon(Icons.arrow_forward_ios, color: textColorSecondary, size: 16),
-          onTap: () {
-            // Show confirmation dialog
-            _showDeleteAccountDialog();
-          },
+          onTap: () async {
+        final username = widget.userData['cognito:username'] ?? 
+                        widget.userData['username'] ?? '';
+        
+        if (username.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Username not available'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        
+        // Show confirmation dialog
+        final confirm = await showDeleteAccountDialog(context);
+        if (!confirm) return;
+        
+        // Show loading
+        setState(() => _isLoading = true);
+        
+        try {
+          // Call API to delete account
+          final userService = UserService();
+          final success = await userService.deleteUserAccount(username);
+          
+          if (success) {
+            // Log out and redirect
+            final cognitoService = CognitoService();
+            await cognitoService.signOut();
+            
+            // Navigate to landing page
+            Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+          }
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting account: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        } finally {
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+        }
+      },
         ),
       ],
     );
@@ -563,10 +611,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
   
   AppBar _buildAppBar(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    
     return AppBar(
-      backgroundColor: themeProvider.isDarkMode ? Colors.black26 : Theme.of(context).primaryColor,
       leading: Builder(
         builder: (BuildContext context) {
           return IconButton(
@@ -577,11 +622,11 @@ class _SettingsPageState extends State<SettingsPage> {
           );
         },
       ),
-      title: const Row(
+      title: Row(
         children: [
-          FlutterLogo(size: 32),
-          SizedBox(width: 8),
-          Text('PIONEER Dashboard'),
+          const FlutterLogo(size: 32),
+          const SizedBox(width: 8),
+          Text('PIONEER'),
         ],
       ),
       actions: [
@@ -589,7 +634,16 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: const Icon(Icons.notifications),
           onPressed: () {},
         ),
-        _buildWalletButton(context),
+        _buildMobileWalletButton(context),
+        IconButton(
+          icon: const Icon(Icons.logout),
+          onPressed: () async {
+            await CognitoService().signOut();
+            if (context.mounted) {
+              Navigator.pushReplacementNamed(context, '/signin');
+            }
+          },
+        ),
       ],
     );
   }
@@ -625,6 +679,45 @@ class _SettingsPageState extends State<SettingsPage> {
   }
   
   Widget _buildWalletButton(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    return Consumer<MetaMaskProvider>(
+      builder: (context, provider, child) {
+        if (provider.isConnected && provider.isInOperatingChain) {
+          return ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+            ),
+            onPressed: () {},
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+              child: Text(
+                '${provider.currentBalance} USD',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          );
+        } else if (provider.isEnabled) {
+          return IconButton(
+            icon: Icon(Icons.wallet, color: themeProvider.textColor),
+            onPressed: () => context.read<MetaMaskProvider>().connect(),
+          );
+        } else {
+          return const SizedBox.shrink();
+        }
+      },
+    );
+  }
+
+  Widget _buildMobileWalletButton(BuildContext context) {
     return Consumer<MetaMaskProvider>(
       builder: (context, provider, child) {
         if (provider.isConnected && provider.isInOperatingChain) {
@@ -719,14 +812,14 @@ class _SettingsPageState extends State<SettingsPage> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              _buildNavItem(context, 'Dashboard', Icons.dashboard, false, "/home"),
-              _buildNavItem(context, 'User Profile', Icons.person, false, "/profile"),
-              _buildNavItem(context, 'Analytics', Icons.analytics, false, ""),
-              _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false, ""),
-              _buildNavItem(context, 'Transactions', Icons.history, false, "/transactions"),
-              _buildNavItem(context, 'Chat', Icons.chat, false, "/chat"),
-              _buildNavItem(context, 'Settings', Icons.settings, true, "/settings"),
-              _buildNavItem(context, 'Support', Icons.support, false, ""),
+              _buildNavItem(context, 'Dashboard', Icons.dashboard, false,"/home"),
+              _buildNavItem(context, 'User Profile', Icons.person, false,"/profile"),
+              _buildNavItem(context, 'Analytics', Icons.analytics, false,""),
+              _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false,""),
+              _buildNavItem(context, 'Transactions', Icons.history, false,"/transactions"),
+              _buildNavItem(context, 'Chat', Icons.chat, false,"/chat"),
+              _buildNavItem(context, 'Settings', Icons.settings, true,"/settings"),
+              _buildNavItem(context, 'Support', Icons.support, false,""),
             ],
           ),
         ),
@@ -772,11 +865,243 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       tileColor: isActive ? Colors.purple.withOpacity(0.3) : Colors.transparent,
       onTap: () {
-        // Handle navigation
-        if (route.isNotEmpty) {
-          Navigator.pushNamed(context, route);
-        }
+        // Example of navigation from HomePage to ProfilePage with userData
+        Navigator.pushNamed(
+          context, 
+          route,
+          arguments: widget.userData
+        );
       },
     );
   }
+}
+
+// Add this as a shared utility method or extension
+Future<void> showChangePasswordDialog(BuildContext context) async {
+  final _formKey = GlobalKey<FormState>();
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+  
+  return showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF2A0030),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text(
+              'Change Password', 
+              style: TextStyle(color: Colors.white)
+            ),
+            content: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_errorMessage != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          border: Border.all(color: Colors.red),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    TextFormField(
+                      controller: _currentPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Current Password',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                      ),
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your current password';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _newPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'New Password',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                        helperText: 'Must be at least 8 characters with letters, numbers, and symbols',
+                        helperStyle: TextStyle(color: Colors.grey),
+                      ),
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a new password';
+                        }
+                        // Password regex pattern for AWS Cognito
+                        final regex = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$');
+                        if (!regex.hasMatch(value)) {
+                          return 'Password must be at least 8 characters with uppercase, lowercase, numbers, and symbols';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _confirmPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm Password',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                      ),
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please confirm your new password';
+                        }
+                        if (value != _newPasswordController.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: _isLoading ? null : () => Navigator.pop(context),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: _isLoading 
+                  ? null 
+                  : () async {
+                      if (_formKey.currentState!.validate()) {
+                        setState(() {
+                          _isLoading = true;
+                          _errorMessage = null;
+                        });
+                        
+                        try {
+                          final cognitoService = CognitoService();
+                          final result = await cognitoService.changePassword(
+                            currentPassword: _currentPasswordController.text,
+                            newPassword: _newPasswordController.text,
+                          );
+                          
+                          if (result) {
+                            Navigator.pop(context, true);
+                            
+                            // Show success message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Password changed successfully'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setState(() {
+                            _isLoading = false;
+                            _errorMessage = e.toString();
+                          });
+                        }
+                      }
+                    },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5C005C),
+                  foregroundColor: Colors.white,
+                ),
+                child: _isLoading 
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Change Password'),
+              ),
+            ],
+          );
+        }
+      );
+    },
+  );
+}
+
+// Add this function to a utils.dart file or directly in your profile_page.dart
+Future<bool> showDeleteAccountDialog(BuildContext context) {
+  return showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text(
+          'Delete Account',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to delete your account?',
+              style: TextStyle(color: Colors.white),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'This action cannot be undone. All your data will be permanently removed.',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete Account'),
+          ),
+        ],
+      );
+    },
+  ).then((value) => value ?? false);
 }

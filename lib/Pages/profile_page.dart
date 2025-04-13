@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../Services/cognito_service.dart';
+import '../Services/theme_provider.dart';
+import '../Services/user_service.dart';
 import '../Services/metamask.dart';
 import '../Widgets/animated_background.dart';
+import '../Widgets/animated_background_light.dart';
 
 class ProfilePage extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -18,6 +21,9 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final _formKey = GlobalKey<FormState>();
+  final _userService = UserService();
+  bool _showProfileIncompleteMessage = false;
+  bool _isLoading = false;
   
   // User profile data - merge with Cognito data in initState
   late Map<String, dynamic> _userData;
@@ -27,30 +33,93 @@ class _ProfilePageState extends State<ProfilePage> {
   late TextEditingController _lastNameController;
   late TextEditingController _emailController;
   late TextEditingController _usernameController;
+  late TextEditingController _phoneController;
+  late TextEditingController _landlineController;
+  late TextEditingController _streetController;
+  late TextEditingController _cityController;
+  late TextEditingController _provinceController;
+  late TextEditingController _buildingController;
+  late TextEditingController _floorController;
+  late TextEditingController _apartmentController;
+  late TextEditingController _walletAddressController;
+  late TextEditingController _productionCapacityController;
+  late TextEditingController _userIdController;
 
   @override
   void initState() {
     super.initState();
     
-    // Initialize the user data with some defaults, then merge with Cognito data
+    // Debug the userData contents to see what's available
+    print("DEBUG - User data keys: ${widget.userData.keys.toList()}");
+    
+    // Extract user ID from multiple possible sources in Cognito tokens
+    final userId = widget.userData['sub'] ?? 
+                  widget.userData['user_id'] ??
+                  widget.userData['cognito:sub'] ?? '';
+                    
+    print("DEBUG - User ID found: $userId"); // Debug user ID
+    
+    // Check if profile is incomplete
+    _showProfileIncompleteMessage = _userService.isProfileIncomplete(widget.userData);
+    
+    // Get username from the correct place in userData
+    final username = widget.userData['cognito:username'] ?? 
+                    widget.userData['username'] ?? '';
+                    
+    print("DEBUG - Username found: $username"); // Debug print
+    
+    // Initialize with proper null checks for all values
     _userData = {
-      'firstName': 'Alex',
-      'lastName': 'Johnson',
-      'email': widget.userData['email'] ?? 'alex.johnson@example.com',
-      'username': widget.userData['cognito:username'] ?? 'alexenergy',
-      'address': '0x7a3Bc4f41E5996C6d7d3Bc4F42c',
+      // Personal information
+      'firstName': widget.userData['first_name'] ?? '',
+      'lastName': widget.userData['last_name'] ?? '',
+      'email': widget.userData['email'] ?? '',
+      'username': username, // Use the correctly extracted username
+      'phone_number': widget.userData['phone_number'] ?? '',
+      'landline': widget.userData['landline'] ?? '',
+      'user_id': userId, // Store user ID from Cognito sub claim
+      
+      // Address information
+      'street': widget.userData['street'] ?? '',
+      'building': widget.userData['building'] ?? '',
+      'apartment': widget.userData['apartment'] ?? '',
+      'city': widget.userData['city'] ?? '',
+      'province_state': widget.userData['province_state'] ?? '',
+      'floor': widget.userData['floor']?.toString() ?? '',
+      
+      // Energy information
+      'total_production_capacity': widget.userData['total_production_capacity']?.toString() ?? '0',
+      'web_3_wallet_address': widget.userData['web_3_wallet_address'] ?? '',
+      
+      // Default profile picture if none is provided
       'profilePicUrl': 'https://i.pravatar.cc/150?img=11',
+      
+      // Additional data
+      'user_id': widget.userData['user_id'] ?? '',
+      // Default values for stats that might not be in the API response
+      'address': widget.userData['web_3_wallet_address'] ?? 'Not connected',
       'energyProduced': 1240.5,
       'energyConsumed': 890.2,
       'tokensEarned': 250,
       'joinDate': DateTime(2024, 1, 15),
     };
     
-    // Initialize controllers with potentially merged data
+    // Initialize all controllers with null safety
     _firstNameController = TextEditingController(text: _userData['firstName']);
     _lastNameController = TextEditingController(text: _userData['lastName']);
     _emailController = TextEditingController(text: _userData['email']);
-    _usernameController = TextEditingController(text: _userData['username']);
+    _usernameController = TextEditingController(text: username); // Set with correct username
+    _phoneController = TextEditingController(text: _userData['phone_number']);
+    _landlineController = TextEditingController(text: _userData['landline']);
+    _streetController = TextEditingController(text: _userData['street']);
+    _cityController = TextEditingController(text: _userData['city']);
+    _provinceController = TextEditingController(text: _userData['province_state']);
+    _buildingController = TextEditingController(text: _userData['building']);
+    _floorController = TextEditingController(text: _userData['floor']);
+    _apartmentController = TextEditingController(text: _userData['apartment']);
+    _walletAddressController = TextEditingController(text: _userData['web_3_wallet_address']);
+    _productionCapacityController = TextEditingController(text: _userData['total_production_capacity']);
+    _userIdController = TextEditingController(text: userId);
   }
   
   @override
@@ -59,6 +128,17 @@ class _ProfilePageState extends State<ProfilePage> {
     _lastNameController.dispose();
     _emailController.dispose();
     _usernameController.dispose();
+    _phoneController.dispose();
+    _landlineController.dispose();
+    _streetController.dispose();
+    _cityController.dispose();
+    _provinceController.dispose();
+    _buildingController.dispose();
+    _floorController.dispose();
+    _apartmentController.dispose();
+    _walletAddressController.dispose();
+    _productionCapacityController.dispose();
+    _userIdController.dispose();
     super.dispose();
   }
 
@@ -66,13 +146,15 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
     final bool isMobile = screenSize.width < 1100;
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.isDarkMode;
 
     return ChangeNotifierProvider<MetaMaskProvider>(
       create: (context) => MetaMaskProvider()..init(),
       builder: (context, child) {
         return Stack(
           children: [
-            const AnimatedBackground(),
+            if (isDarkMode) const AnimatedBackground() else const AnimatedBackgroundLight(),
             Scaffold(
               backgroundColor: Colors.transparent,
               appBar: isMobile ? _buildAppBar(context) : null,
@@ -98,8 +180,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('User Profile', 
-                                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+                                Text('User Profile', 
+                                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
                                 _isEditing 
                                   ? _buildEditingButtons() 
                                   : ElevatedButton.icon(
@@ -140,6 +222,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
   
   Widget _buildEditingButtons() {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     return Row(
       children: [
         OutlinedButton(
@@ -155,13 +238,13 @@ class _ProfilePageState extends State<ProfilePage> {
           },
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.white,
-            side: const BorderSide(color: Colors.white),
+            side: BorderSide(color: themeProvider.textColor),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
           ),
-          child: const Text('Cancel'),
+          child: Text('Cancel', style: TextStyle(color: themeProvider.textColor)),
         ),
         const SizedBox(width: 12),
         ElevatedButton(
@@ -180,64 +263,82 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
   
-  void _saveProfile() {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _userData['firstName'] = _firstNameController.text;
-        _userData['lastName'] = _lastNameController.text;
-        _userData['email'] = _emailController.text;
-        _userData['username'] = _usernameController.text;
-        _isEditing = false;
-      });
-      
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile updated successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-  
   Widget _buildProfileContent(BuildContext context, bool isMobile) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth > 900) {
-          // Desktop layout: side-by-side
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: _buildUserInfoCard(),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  children: [
-                    _buildStatsCard(),
-                    const SizedBox(height: 24),
-                    _buildAccountSecurityCard(),
-                  ],
+    return Column(
+      children: [
+        // Profile incomplete banner
+        if (_showProfileIncompleteMessage)
+          Container(
+            margin: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Text(
+                    'Your profile is incomplete. Please provide the missing information to complete your setup.',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
-              ),
-            ],
-          );
-        } else {
-          // Mobile layout: stacked
-          return Column(
-            children: [
-              _buildUserInfoCard(),
-              const SizedBox(height: 24),
-              _buildStatsCard(),
-              const SizedBox(height: 24),
-              _buildAccountSecurityCard(),
-            ],
-          );
-        }
-      }
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _isEditing = true;
+                    });
+                  },
+                  style: TextButton.styleFrom(foregroundColor: Colors.orange),
+                  child: const Text('Complete Now'),
+                ),
+              ],
+            ),
+          ),
+        
+        // Existing layout builder
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth > 900) {
+              // Desktop layout: side-by-side
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: _buildUserInfoCard(),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      children: [
+                        _buildStatsCard(),
+                        const SizedBox(height: 24),
+                        _buildAccountSecurityCard(),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            } else {
+              // Mobile layout: stacked
+              return Column(
+                children: [
+                  _buildUserInfoCard(),
+                  const SizedBox(height: 24),
+                  _buildStatsCard(),
+                  const SizedBox(height: 24),
+                  _buildAccountSecurityCard(),
+                ],
+              );
+            }
+          }
+        ),
+      ],
     );
   }
   
@@ -259,263 +360,77 @@ class _ProfilePageState extends State<ProfilePage> {
           borderRadius: BorderRadius.circular(8),
         ),
         padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Column(
-                  children: [
-                    // Profile picture with edit option
-                    Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        CircleAvatar(
-                          radius: 60,
-                          backgroundImage: NetworkImage(_userData['profilePicUrl']),
-                        ),
-                        if (_isEditing)
-                          Container(
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF5C005C),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-                              onPressed: () {
-                                // Add photo upload functionality
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    if (!_isEditing)
-                      Text(
-                        '${_userData['firstName']} ${_userData['lastName']}',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    if (!_isEditing)
-                      Text(
-                        '@${_userData['username']}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[300],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Personal Information',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // First name
-              if (_isEditing) ...[
-                const Text(
-                  'First Name',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _firstNameController,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your first name';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-              ] else ...[
-                _buildInfoRow('First Name', _userData['firstName']),
-                const SizedBox(height: 16),
-              ],
-              
-              // Last name
-              if (_isEditing) ...[
-                const Text(
-                  'Last Name',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _lastNameController,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your last name';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-              ] else ...[
-                _buildInfoRow('Last Name', _userData['lastName']),
-                const SizedBox(height: 16),
-              ],
-              
-              // Email
-              if (_isEditing) ...[
-                const Text(
-                  'Email',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-              ] else ...[
-                _buildInfoRow('Email', _userData['email']),
-                const SizedBox(height: 16),
-              ],
-              
-              // Username
-              if (_isEditing) ...[
-                const Text(
-                  'Username',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _usernameController,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white.withOpacity(0.1),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter a username';
-                    }
-                    if (value.length < 3) {
-                      return 'Username must be at least 3 characters';
-                    }
-                    return null;
-                  },
-                ),
-              ] else ...[
-                _buildInfoRow('Username', _userData['username']),
-              ],
-              
-              const SizedBox(height: 24),
-              const Text(
-                'Wallet Information',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Wallet Address
-              _buildInfoRow('Blockchain Address', _userData['address'], isAddress: true),
-              
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Profile picture section
+            Center(
+              child: Column(
                 children: [
-                  TextButton.icon(
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('Copy Address'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.purple[200],
-                    ),
-                    onPressed: () {
-                      // Copy to clipboard functionality
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Address copied to clipboard'),
+                  // Profile picture with edit option
+                  Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      CircleAvatar(
+                        radius: 60,
+                        backgroundImage: NetworkImage(_userData['profilePicUrl']),
+                      ),
+                      if (_isEditing)
+                        Container(
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF5C005C),
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                            onPressed: () {
+                              // Add photo upload functionality
+                            },
+                          ),
                         ),
-                      );
-                    },
+                    ],
                   ),
+                  const SizedBox(height: 16),
                 ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            
+            // Use the complete form here
+            _buildProfileForm(),
+          ],
         ),
       ),
     );
   }
   
-  Widget _buildInfoRow(String label, String value, {bool isAddress = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.grey[400],
-            fontSize: 14,
-          ),
+  Widget _buildInfoRow(String label, String? value, {bool isAddress = false}) {
+  // Ensure value is never null
+  final displayValue = value ?? 'Not provided';
+  
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: TextStyle(
+          color: Colors.grey[400],
+          fontSize: 14,
         ),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontFamily: isAddress ? 'monospace' : null,
-          ),
-          overflow: isAddress ? TextOverflow.ellipsis : TextOverflow.clip,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        displayValue,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontFamily: isAddress ? 'monospace' : null,
         ),
-      ],
-    );
-  }
+        overflow: isAddress ? TextOverflow.ellipsis : TextOverflow.clip,
+      ),
+    ],
+  );
+}
   
   Widget _buildStatsCard() {
     return Card(
@@ -714,7 +629,10 @@ class _ProfilePageState extends State<ProfilePage> {
             ? const Icon(Icons.check_circle, color: Colors.green)
             : const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
           onTap: () {
-            // Handle tap on security item
+            // If it's the password change item, show the dialog
+            if (title == 'Change Password') {
+              showChangePasswordDialog(context);
+            }
           },
         ),
         if (!isLast)
@@ -725,7 +643,6 @@ class _ProfilePageState extends State<ProfilePage> {
   
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
-      backgroundColor: Colors.black26,
       leading: Builder(
         builder: (BuildContext context) {
           return IconButton(
@@ -736,11 +653,11 @@ class _ProfilePageState extends State<ProfilePage> {
           );
         },
       ),
-      title: const Row(
+      title: Row(
         children: [
-          FlutterLogo(size: 32),
-          SizedBox(width: 8),
-          Text('PIONEER Dashboard'),
+          const FlutterLogo(size: 32),
+          const SizedBox(width: 8),
+          Text('PIONEER'),
         ],
       ),
       actions: [
@@ -748,40 +665,95 @@ class _ProfilePageState extends State<ProfilePage> {
           icon: const Icon(Icons.notifications),
           onPressed: () {},
         ),
-        _buildWalletButton(context),
-      ],
-    );
-  }
-  
-  Widget _buildTopBar(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('PIONEER Dashboard', 
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              onPressed: () {},
-            ),
-            IconButton(
-              icon: const Icon(Icons.notifications, color: Colors.white),
-              onPressed: () {},
-            ),
-            _buildWalletButton(context),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: const Icon(Icons.logout, color: Colors.white),
-              onPressed: () => Navigator.pushReplacementNamed(context, '/signin'),
-            ),
-          ],
+        _buildMobileWalletButton(context),
+        IconButton(
+          icon: const Icon(Icons.logout),
+          onPressed: () async {
+            await CognitoService().signOut();
+            if (context.mounted) {
+              Navigator.pushReplacementNamed(context, '/signin');
+            }
+          },
         ),
       ],
     );
   }
   
+  Widget _buildTopBar(BuildContext context) {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text('PIONEER Dashboard', 
+        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
+      Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.search, color: themeProvider.textColor),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: Icon(Icons.notifications, color: themeProvider.textColor),
+            onPressed: () {},
+          ),
+          _buildWalletButton(context),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(Icons.logout, color: themeProvider.textColor),
+            onPressed: () async {
+              await CognitoService().signOut(); // Clear tokens first
+              if (context.mounted) {
+                Navigator.pushReplacementNamed(context, '/signin');
+              }
+            },
+          ),
+        ],
+      ),
+    ],
+  );
+}
+  
   Widget _buildWalletButton(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    return Consumer<MetaMaskProvider>(
+      builder: (context, provider, child) {
+        if (provider.isConnected && provider.isInOperatingChain) {
+          return ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+            ),
+            onPressed: () {},
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+              child: Text(
+                '${provider.currentBalance} USD',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          );
+        } else if (provider.isEnabled) {
+          return IconButton(
+            icon: Icon(Icons.wallet, color: themeProvider.textColor),
+            onPressed: () => context.read<MetaMaskProvider>().connect(),
+          );
+        } else {
+          return const SizedBox.shrink();
+        }
+      },
+    );
+  }
+
+  Widget _buildMobileWalletButton(BuildContext context) {
     return Consumer<MetaMaskProvider>(
       builder: (context, provider, child) {
         if (provider.isConnected && provider.isInOperatingChain) {
@@ -874,14 +846,14 @@ class _ProfilePageState extends State<ProfilePage> {
           child: ListView(
             padding: EdgeInsets.zero,
             children: [
-              _buildNavItem(context, 'Dashboard', Icons.dashboard, false, "/home"),
-              _buildNavItem(context, 'User Profile', Icons.person, true, ""),
-              _buildNavItem(context, 'Analytics', Icons.analytics, false, ""),
-              _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false, ""),
-              _buildNavItem(context, 'Transactions', Icons.history, false, "/transactions"),
-              _buildNavItem(context, 'Chat', Icons.chat, false, "/chat"),
-              _buildNavItem(context, 'Settings', Icons.settings, false, ""),
-              _buildNavItem(context, 'Support', Icons.support, false, ""),
+              _buildNavItem(context, 'Dashboard', Icons.dashboard, false,"/home"),
+              _buildNavItem(context, 'User Profile', Icons.person, true,"/profile"),
+              _buildNavItem(context, 'Analytics', Icons.analytics, false,""),
+              _buildNavItem(context, 'Wallet', Icons.account_balance_wallet, false,""),
+              _buildNavItem(context, 'Transactions', Icons.history, false,"/transactions"),
+              _buildNavItem(context, 'Chat', Icons.chat, false,"/chat"),
+              _buildNavItem(context, 'Settings', Icons.settings, false,"/settings"),
+              _buildNavItem(context, 'Support', Icons.support, false,""),
             ],
           ),
         ),
@@ -927,11 +899,546 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       tileColor: isActive ? Colors.purple.withOpacity(0.3) : Colors.transparent,
       onTap: () {
-        // Handle navigation
-        if (route.isNotEmpty) {
-          Navigator.pushNamed(context, route);
-        }
+        // Example of navigation from HomePage to ProfilePage with userData
+        Navigator.pushNamed(
+          context, 
+          route,
+          arguments: widget.userData
+        );
       },
     );
   }
+
+  Widget _buildProfileForm() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Personal Information
+          const Text(
+            'Personal Information',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const Divider(),
+          const SizedBox(height: 16),
+          
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _firstNameController,  // Use controller instead of initialValue
+                  decoration: const InputDecoration(labelText: 'First Name'),
+                  enabled: _isEditing,
+                  validator: _isEditing ? (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your first name';
+                    }
+                    return null;
+                  } : null,
+                  style: const TextStyle(color: Colors.white), // Change text color to white
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: TextFormField(
+                  controller: _lastNameController,  // Use controller instead of initialValue
+                  decoration: const InputDecoration(labelText: 'Last Name'),
+                  enabled: _isEditing,
+                  validator: _isEditing ? (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your last name';
+                    }
+                    return null;
+                  } : null,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            initialValue: widget.userData['email'] ?? '',
+            decoration: const InputDecoration(labelText: 'Email'),
+            enabled: false, // Email shouldn't be editable as it's the primary identifier
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _usernameController, // Use the controller instead of initialValue
+            decoration: const InputDecoration(labelText: 'Username'),
+            enabled: false, // Username shouldn't be editable
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            initialValue: widget.userData['phone_number'] ?? '',
+            decoration: const InputDecoration(labelText: 'Phone Number'),
+            enabled: _isEditing,
+            style: const TextStyle(color: Colors.white),
+          ),
+
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _landlineController,  // Use controller instead of initialValue
+            decoration: const InputDecoration(labelText: 'Landline Number'),
+            enabled: _isEditing,
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          // const SizedBox(height: 16),
+          // TextFormField(
+          //   initialValue: widget.userData['user_id'] ?? '',
+          //   decoration: const InputDecoration(labelText: 'User ID'),
+          //   enabled: false, // User ID should never be editable
+          // ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _userIdController,
+            decoration: const InputDecoration(labelText: 'User ID'),
+            enabled: false, // User ID should never be editable
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          // Address Information
+          const SizedBox(height: 24),
+          const Text(
+            'Address Information',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const Divider(),
+          const SizedBox(height: 16),
+          
+          TextFormField(
+            controller: _streetController,
+            decoration: const InputDecoration(labelText: 'Street'),
+            enabled: _isEditing,
+            validator: _isEditing ? (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your street';
+              }
+              return null;
+            } : null,
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _buildingController,  // Use controller instead of initialValue
+            decoration: const InputDecoration(labelText: 'Building'),
+            enabled: _isEditing,
+            validator: _isEditing ? (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your building';
+              }
+              return null;
+            } : null,
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _apartmentController,  // Use controller instead of initialValue
+            decoration: const InputDecoration(labelText: 'Apartment'),
+            enabled: _isEditing,
+            validator: _isEditing ? (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your apartment';
+              }
+              return null;
+            } : null,
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: _cityController,
+                  decoration: const InputDecoration(labelText: 'City'),
+                  enabled: _isEditing,
+                  validator: _isEditing ? (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your city';
+                    }
+                    return null;
+                  } : null,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: TextFormField(
+                  controller: _provinceController,
+                  decoration: const InputDecoration(labelText: 'Province/State'),
+                  enabled: _isEditing,
+                  validator: _isEditing ? (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your province/state';
+                    }
+                    return null;
+                  } : null,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _floorController,
+            decoration: const InputDecoration(labelText: 'Floor'),
+            enabled: _isEditing,
+            validator: _isEditing ? (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your floor';
+              }
+              return null;
+            } : null,
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          // Energy Information
+          const SizedBox(height: 24),
+          const Text(
+            'Energy Information',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          const Divider(),
+          const SizedBox(height: 16),
+          
+          TextFormField(
+            controller: _productionCapacityController,
+            decoration: const InputDecoration(labelText: 'Total Production Capacity'),
+            enabled: _isEditing, // This is typically controlled by the system
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _walletAddressController,
+            decoration: const InputDecoration(labelText: 'Web3 Wallet Address'),
+            enabled: _isEditing,
+            validator: _isEditing ? (value) {
+              if (value == null || value.isEmpty) {
+                return 'Please enter your web3 wallet address';
+              }
+              return null;
+            } : null,
+            style: const TextStyle(color: Colors.white),
+          ),
+          
+          // Action buttons
+          const SizedBox(height: 32),
+          _buildActionButtons(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        ElevatedButton(
+          onPressed: _isEditing && !_isLoading ? _saveProfile : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF5C005C),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: _isLoading 
+            ? const SizedBox(
+                width: 20, 
+                height: 20, 
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+              )
+            : const Text('Save Changes'),
+        ),
+        const SizedBox(width: 16),
+        OutlinedButton(
+          onPressed: _isEditing && !_isLoading ? () {
+            setState(() {
+              _isEditing = false;
+            });
+          } : null,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Colors.white),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+
+  void _saveProfile() async {
+  if (_formKey.currentState!.validate()) {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+      
+      final username = _usernameController.text;
+      
+      if (username.isEmpty) {
+        throw Exception('Username is required');
+      }
+      
+      // Prepare profile data for API
+      final profileData = {
+        'first_name': _firstNameController.text,
+        'last_name': _lastNameController.text,
+        'phone_number': _phoneController.text,
+        'landline': _landlineController.text,
+        'street': _streetController.text,
+        'city': _cityController.text,
+        'province_state': _provinceController.text,
+        'building': _buildingController.text,
+        'floor': int.tryParse(_floorController.text ?? '') ?? 0,
+        'apartment': _apartmentController.text,
+        'web_3_wallet_address': _walletAddressController.text,
+        'total_production_capacity': int.tryParse(
+            _productionCapacityController.text.replaceAll(' kWh', '').trim() ?? '0'
+        ) ?? 0,
+      };
+
+      debugPrint("Profile data to be sent: $profileData");
+      
+      // Call API to update profile
+      final updatedData = await _userService.updateUserProfile(
+        username,
+        profileData,
+      );
+      
+      // Clear cached data and reload it to ensure consistency
+      await _userService.clearUserData();
+      final refreshedData = await _userService.getUserData(username);
+      
+      // Update local data
+      setState(() {
+        _isLoading = false;
+        _isEditing = false;
+        _showProfileIncompleteMessage = false;
+        
+        // Update userData with refreshed data
+        if (refreshedData != null) {
+          widget.userData.clear();
+          widget.userData.addAll(refreshedData);
+        }
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile updated successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to update profile: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+}
+}
+
+// Add this as a shared utility method or extension
+Future<void> showChangePasswordDialog(BuildContext context) async {
+  final _formKey = GlobalKey<FormState>();
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+  
+  return showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF2A0030),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: const Text(
+              'Change Password', 
+              style: TextStyle(color: Colors.white)
+            ),
+            content: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_errorMessage != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          border: Border.all(color: Colors.red),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    TextFormField(
+                      controller: _currentPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Current Password',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                      ),
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your current password';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _newPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'New Password',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                        helperText: 'Must be at least 8 characters with letters, numbers, and symbols',
+                        helperStyle: TextStyle(color: Colors.grey),
+                      ),
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a new password';
+                        }
+                        // Password regex pattern for AWS Cognito
+                        final regex = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$');
+                        if (!regex.hasMatch(value)) {
+                          return 'Password must be at least 8 characters with uppercase, lowercase, numbers, and symbols';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _confirmPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm Password',
+                        labelStyle: TextStyle(color: Colors.grey),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey),
+                        ),
+                      ),
+                      obscureText: true,
+                      style: const TextStyle(color: Colors.white),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please confirm your new password';
+                        }
+                        if (value != _newPasswordController.text) {
+                          return 'Passwords do not match';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: _isLoading ? null : () => Navigator.pop(context),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: _isLoading 
+                  ? null 
+                  : () async {
+                      if (_formKey.currentState!.validate()) {
+                        setState(() {
+                          _isLoading = true;
+                          _errorMessage = null;
+                        });
+                        
+                        try {
+                          final cognitoService = CognitoService();
+                          final result = await cognitoService.changePassword(
+                            currentPassword: _currentPasswordController.text,
+                            newPassword: _newPasswordController.text,
+                          );
+                          
+                          if (result) {
+                            Navigator.pop(context, true);
+                            
+                            // Show success message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Password changed successfully'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          setState(() {
+                            _isLoading = false;
+                            _errorMessage = e.toString();
+                          });
+                        }
+                      }
+                    },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5C005C),
+                  foregroundColor: Colors.white,
+                ),
+                child: _isLoading 
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Change Password'),
+              ),
+            ],
+          );
+        }
+      );
+    },
+  );
 }

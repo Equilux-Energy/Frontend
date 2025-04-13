@@ -5,80 +5,130 @@ import '../Services/chart_card.dart';
 import '../Services/cognito_service.dart';
 import '../Services/metamask.dart';
 import '../Services/theme_provider.dart';
+import '../Services/user_service.dart';
 import '../Widgets/animated_background.dart';
 import 'package:fl_chart/fl_chart.dart' as fl_chart;
 
-class HomePage extends StatelessWidget {
+import '../Widgets/animated_background_light.dart';
+
+class HomePage extends StatefulWidget {
   final Map<String, dynamic> userData;
-  
-  const HomePage({
-    super.key, 
-    required this.userData,
-  });
+  const HomePage({super.key, required this.userData});
 
   @override
-Widget build(BuildContext context) {
-  final screenSize = MediaQuery.of(context).size;
-  final bool isMobile = screenSize.width < 1100;
-  final themeProvider = Provider.of<ThemeProvider>(context);
-  
-  // Now you can use userData to display personalized content
-  final String username = userData['cognito:username'] ?? 'User';
+  State<HomePage> createState() => _HomePageState();
+}
 
-  return ChangeNotifierProvider<MetaMaskProvider>(
-    create: (context) => MetaMaskProvider()..init(),
-    builder: (context, child) {
-      return Stack(
-        children: [
-          if (themeProvider.isDarkMode) 
-            const AnimatedBackground() 
-          else 
-            Container(color: Colors.grey[100]),
-          Scaffold(
-            backgroundColor: Colors.transparent,
-            appBar: isMobile ? _buildAppBar(context) : null,
-            drawer: isMobile ? _buildDrawer(context) : null,
-            body: Row(
-              children: [
-                if (!isMobile) _buildSidebar(context),
-                
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.all(24.0),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+class _HomePageState extends State<HomePage> {
+  final _userService = UserService();
+  bool _showProfileIncompleteMessage = false;
+  
+  @override
+  void initState() {
+    super.initState();
+    _showProfileIncompleteMessage = _userService.isProfileIncomplete(widget.userData);
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final bool isMobile = screenSize.width < 1100;
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    
+    // Now you can use userData to display personalized content
+    final String username = widget.userData['cognito:username'] ?? 'User';
+
+    return ChangeNotifierProvider<MetaMaskProvider>(
+      create: (context) => MetaMaskProvider()..init(),
+      builder: (context, child) {
+        return Stack(
+          children: [
+            if (themeProvider.isDarkMode) 
+              const AnimatedBackground() 
+            else 
+              const AnimatedBackgroundLight(),
+            Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: isMobile ? _buildAppBar(context) : null,
+              drawer: isMobile ? _buildDrawer(context) : null,
+              body: Column(
+                children: [
+                  // Profile completion banner
+                  if (_showProfileIncompleteMessage)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      color: Colors.orange.shade800,
+                      child: Row(
                         children: [
-                          if (!isMobile)
-                            _buildTopBar(context),
-                            
-                          const SizedBox(height: 16),
-                          Text('Dashboard', 
-                            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
-                          const SizedBox(height: 24),
-                          
-                          _buildStatsCards(),
-                          
-                          const SizedBox(height: 24),
-                          
-                          _buildChartsSection(context),
-                          
-                          const SizedBox(height: 24),
-                          
-                          _buildTableSection(context),
+                          const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Text(
+                              'Your profile is incomplete. Please complete your profile to use all features.',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/profile');
+                            },
+                            style: TextButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.orange.shade800,
+                            ),
+                            child: const Text('Complete Now'),
+                          ),
                         ],
                       ),
                     ),
+                  
+                  // Your existing content
+                  Expanded(
+                    child: Row(
+                      children: [
+                        if (!isMobile) _buildSidebar(context),
+                        
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.all(24.0),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  if (!isMobile)
+                                    _buildTopBar(context),
+                                    
+                                  const SizedBox(height: 16),
+                                  Text('Dashboard', 
+                                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
+                                  const SizedBox(height: 24),
+                                  
+                                  _buildStatsCards(),
+                                  
+                                  const SizedBox(height: 24),
+                                  
+                                  _buildChartsSection(context),
+                                  
+                                  const SizedBox(height: 24),
+                                  
+                                  _buildTableSection(context),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      );
-    }
-  );
-}
+          ],
+        );
+      }
+    );
+  }
   
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
@@ -96,7 +146,7 @@ Widget build(BuildContext context) {
         children: [
           const FlutterLogo(size: 32),
           const SizedBox(width: 8),
-          Text('PIONEER Dashboard | Welcome ${userData['cognito:username']}'),
+          Text('PIONEER'),
         ],
       ),
       actions: [
@@ -104,12 +154,14 @@ Widget build(BuildContext context) {
           icon: const Icon(Icons.notifications),
           onPressed: () {},
         ),
-        _buildWalletButton(context),
+        _buildMobileWalletButton(context),
         IconButton(
           icon: const Icon(Icons.logout),
           onPressed: () async {
             await CognitoService().signOut();
-            Navigator.of(context).pushReplacementNamed('/signin');
+            if (context.mounted) {
+              Navigator.pushReplacementNamed(context, '/signin');
+            }
           },
         ),
       ],
@@ -140,7 +192,9 @@ Widget build(BuildContext context) {
             icon: Icon(Icons.logout, color: themeProvider.textColor),
             onPressed: () async {
               await CognitoService().signOut(); // Clear tokens first
-              Navigator.of(context).pushReplacementNamed('/signin');
+              if (context.mounted) {
+                Navigator.pushReplacementNamed(context, '/signin');
+              }
             },
           ),
         ],
@@ -151,6 +205,45 @@ Widget build(BuildContext context) {
 
   
   Widget _buildWalletButton(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    return Consumer<MetaMaskProvider>(
+      builder: (context, provider, child) {
+        if (provider.isConnected && provider.isInOperatingChain) {
+          return ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+            ),
+            onPressed: () {},
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+              child: Text(
+                '${provider.currentBalance} USD',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          );
+        } else if (provider.isEnabled) {
+          return IconButton(
+            icon: Icon(Icons.wallet, color: themeProvider.textColor),
+            onPressed: () => context.read<MetaMaskProvider>().connect(),
+          );
+        } else {
+          return const SizedBox.shrink();
+        }
+      },
+    );
+  }
+
+  Widget _buildMobileWalletButton(BuildContext context) {
     return Consumer<MetaMaskProvider>(
       builder: (context, provider, child) {
         if (provider.isConnected && provider.isInOperatingChain) {
@@ -267,7 +360,9 @@ Widget build(BuildContext context) {
             ),
             onPressed: () async {
               await CognitoService().signOut(); // Clear tokens first
-              Navigator.of(context).pushReplacementNamed('/signin');
+              if (context.mounted) {
+                Navigator.pushReplacementNamed(context, '/signin');
+              }
             },
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -299,8 +394,12 @@ Widget build(BuildContext context) {
       ),
       tileColor: isActive ? Colors.purple.withOpacity(0.3) : Colors.transparent,
       onTap: () {
-        // Handle navigation
-        Navigator.pushNamed(context, route);
+        // Example of navigation from HomePage to ProfilePage with userData
+        Navigator.pushNamed(
+          context, 
+          route,
+          arguments: widget.userData
+        );
       },
     );
   }

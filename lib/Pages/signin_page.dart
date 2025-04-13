@@ -1,6 +1,7 @@
 // signin_page.dart
 import 'package:flutter/material.dart';
 import '../Services/cognito_service.dart';
+import '../Services/user_service.dart';
 import '../Widgets/animated_background.dart';
 import 'signup_page.dart';
 import 'forgot_password_page.dart';
@@ -24,14 +25,27 @@ class _SignInPageState extends State<SignInPage> {
       setState(() => _isLoading = true);
       
       try {
-        await _cognitoService.signIn(
+        // Authenticate with Cognito
+        final authResult = await _cognitoService.signIn(
           username: _usernameController.text,
           password: _passwordController.text,
         );
         
+        // Load user data
+        final userService = UserService();
+        final userData = await userService.getUserData(_usernameController.text);
+        
+        if (userData == null) {
+          throw Exception('Failed to retrieve user data');
+        }
+        
         if (mounted) {
-          // Navigate to home on successful login
-          Navigator.pushReplacementNamed(context, '/home');
+          // Use this navigation method to completely replace the URL
+          Navigator.pushReplacementNamed(
+            context,
+            '/home',
+            arguments: userData,
+          );
         }
       } catch (e) {
         if (mounted) {
