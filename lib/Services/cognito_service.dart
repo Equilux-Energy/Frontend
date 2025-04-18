@@ -725,7 +725,6 @@ class Message {
   
   ChatMessage toChatMessage(String currentUserId) {
     final bool isCurrentUserSender = senderId == currentUserId;
-    debugPrint('Current user ID: $currentUserId, Sender ID: $senderId, Is sender: $isCurrentUserSender');
     
     if (messageType == 'tradeOffer') {
       return ChatMessage(
@@ -739,6 +738,10 @@ class Message {
           description: 'Price: \$${pricePerUnit?.toStringAsFixed(2)} per kWh',
           isPending: status == 'pending',
           status: status ?? 'pending',
+          pricePerUnit: pricePerUnit ?? 0.0,
+          totalAmount: totalAmount ?? 0,
+          startTime: startTime ?? DateTime.now(),
+          tradeType: tradeType ?? 'sell',
         ),
       );
     } else {

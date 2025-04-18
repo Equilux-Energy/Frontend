@@ -12,11 +12,15 @@ import '../Services/user_service.dart';
 enum MessageType { text, offer }
 
 class TradeOffer {
-  final String item;
-  final String amount;
-  final String description;
-  final bool isPending;
-  final String status; // pending, accepted, rejected
+  final String item;           // Display name of trade
+  final String amount;         // Text representation of amount (with units)
+  final String description;    // Additional description text
+  final bool isPending;        // Quick check if pending
+  final String status;         // "pending", "accepted", "rejected"
+  final double pricePerUnit;   // Numeric price per kWh
+  final int totalAmount;       // Numeric amount in kWh
+  final DateTime startTime;    // When the trade starts
+  final String tradeType;      // "buy" or "sell"
   
   TradeOffer({
     required this.item,
@@ -24,6 +28,10 @@ class TradeOffer {
     this.description = '',
     this.isPending = true,
     this.status = 'pending',
+    required this.pricePerUnit,
+    required this.totalAmount,
+    required this.startTime,
+    required this.tradeType,
   });
 }
 
@@ -776,6 +784,9 @@ class _ChatPageState extends State<ChatPage> {
         statusText = 'Pending Response';
     }
 
+    // Calculate total value
+    final totalValue = offer.pricePerUnit * offer.totalAmount;
+
     return Container(
       width: 280,
       padding: const EdgeInsets.all(12),
@@ -801,8 +812,8 @@ class _ChatPageState extends State<ChatPage> {
           Row(
             children: [
               Icon(
-                offer.item.toLowerCase().contains('sell') ? Icons.arrow_upward : Icons.arrow_downward,
-                color: offer.item.toLowerCase().contains('sell') ? Colors.green : Colors.blue,
+                offer.tradeType == 'sell' ? Icons.arrow_upward : Icons.arrow_downward,
+                color: offer.tradeType == 'sell' ? Colors.green : Colors.blue,
                 size: 18,
               ),
               const SizedBox(width: 8),
@@ -821,7 +832,7 @@ class _ChatPageState extends State<ChatPage> {
           
           const SizedBox(height: 12),
           
-          // Amount and price
+          // Amount, price and total value
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -833,7 +844,7 @@ class _ChatPageState extends State<ChatPage> {
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   Text(
-                    offer.amount,
+                    '${offer.totalAmount} kWh',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -850,7 +861,50 @@ class _ChatPageState extends State<ChatPage> {
                     style: TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   Text(
-                    offer.description,
+                    '\$${offer.pricePerUnit.toStringAsFixed(2)}/kWh',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 8),
+          
+          // Total value and start date
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Start Date',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Text(
+                    DateFormat('MMM d, yyyy').format(offer.startTime),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'Total Value',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Text(
+                    '\$${totalValue.toStringAsFixed(2)}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
