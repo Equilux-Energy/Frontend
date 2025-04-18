@@ -158,6 +158,11 @@ class _ChatPageState extends State<ChatPage> {
         _nextPageToken = messageResponse.nextPageToken;
         _isLoadingMessages = false;
       });
+      Future.delayed(const Duration(milliseconds: 100), () {
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    }
+  });
     } catch (e) {
       if (kDebugMode) {
         print('Exception when loading messages: $e');
@@ -719,7 +724,7 @@ class _ChatPageState extends State<ChatPage> {
                 maxWidth: MediaQuery.of(context).size.width * 0.7,
               ),
               child: message.type == MessageType.offer
-                  ? _buildOfferCard(message.offer!)
+                  ? _buildOfferCard(message.offer!, isUser) // Pass isUser parameter
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -751,7 +756,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // Update the offer card to show status properly
-  Widget _buildOfferCard(TradeOffer offer) {
+  Widget _buildOfferCard(TradeOffer offer, bool isUserSender) {
     // Determine status colors and text
     Color statusColor;
     String statusText = offer.status;
@@ -792,12 +797,83 @@ class _ChatPageState extends State<ChatPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Rest of your offer card content...
-          // Display status based on offer.status
+          // Trade offer title
+          Row(
+            children: [
+              Icon(
+                offer.item.toLowerCase().contains('sell') ? Icons.arrow_upward : Icons.arrow_downward,
+                color: offer.item.toLowerCase().contains('sell') ? Colors.green : Colors.blue,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  offer.item,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 12),
+          
+          // Amount and price
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Amount',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Text(
+                    offer.amount,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    'Price',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  Text(
+                    offer.description,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 12),
+          const Divider(color: Colors.white24),
+          const SizedBox(height: 8),
+          
+          // Status and action buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              if (offer.status.toLowerCase() == 'pending') ...[
+              // Only show Accept/Decline buttons if:
+              // 1. Offer is pending AND
+              // 2. Current user is the RECEIVER (not the sender)
+              if (offer.status.toLowerCase() == 'pending' && !isUserSender) ...[
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green.shade700,
@@ -985,8 +1061,8 @@ void _updateConversationWithLatestMessage({
 
   showDialog(
     context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
         backgroundColor: const Color(0xFF2A0030),
         title: const Text('Create Trade Offer', style: TextStyle(color: Colors.white)),
         content: SingleChildScrollView(
@@ -1002,7 +1078,7 @@ void _updateConversationWithLatestMessage({
                     value: 'sell',
                     groupValue: tradeType,
                     onChanged: (value) {
-                      setState(() {
+                      setDialogState(() {
                         tradeType = value!;
                       });
                     },
@@ -1014,7 +1090,7 @@ void _updateConversationWithLatestMessage({
                     value: 'buy',
                     groupValue: tradeType,
                     onChanged: (value) {
-                      setState(() {
+                      setDialogState(() {
                         tradeType = value!;
                       });
                     },
@@ -1023,7 +1099,6 @@ void _updateConversationWithLatestMessage({
                   const Text('Buy', style: TextStyle(color: Colors.white)),
                 ],
               ),
-              
               const SizedBox(height: 16),
               TextField(
                 controller: amountController,
@@ -1136,9 +1211,16 @@ void _updateConversationWithLatestMessage({
                   return;
                 }
                 
-                Navigator.pop(context);
+                final messageText = descriptionController.text.isNotEmpty 
+                    ? descriptionController.text 
+                    : tradeType == 'sell' 
+                        ? 'Offering $amount kWh at \$$price per kWh'
+                        : 'Looking to buy $amount kWh at \$$price per kWh';
+                debugPrint('Sending message: $messageText');
+                // Close dialog BEFORE any async operations
+                Navigator.pop(dialogContext);
                 
-                // Show loading indicator
+                // Show loading indicator using the parent widget's setState
                 setState(() {
                   _isLoadingMessages = true;
                 });
@@ -1146,11 +1228,7 @@ void _updateConversationWithLatestMessage({
                 final cognitoService = CognitoService();
                 final message = await cognitoService.sendTradeOffer(
                   recipientUsername: _currentChatUser!.username,
-                  text: descriptionController.text.isNotEmpty 
-                      ? descriptionController.text 
-                      : tradeType == 'sell' 
-                          ? 'Offering $amount kWh at \$$price per kWh'
-                          : 'Looking to buy $amount kWh at \$$price per kWh',
+                  text: messageText,
                   pricePerUnit: price,
                   startTime: selectedDate,
                   totalAmount: amount,
@@ -1159,40 +1237,44 @@ void _updateConversationWithLatestMessage({
                 
                 // Get current user ID for the message conversion
                 final userData = await cognitoService.getUserInfo();
-                final currentUserId = userData?['sub'] ?? '';
+                final currentUserId = userData?['cognito:username'] ?? '';
                 
-                setState(() {
-                  _isLoadingMessages = false;
-                  _messages.add(message.toChatMessage(currentUserId));
-                  
-                  // Update conversation with trade offer
-                  _updateConversationWithLatestMessage(
-                    username: _currentChatUser!.username,
-                    lastMessage: tradeType == 'sell' 
-                        ? 'Offering $amount kWh at \$$price per kWh'
-                        : 'Looking to buy $amount kWh at \$$price per kWh',
-                    timestamp: DateTime.now(),
-                    isTradeOffer: true
-                  );
-                });
-                
-                // Auto-scroll to the bottom
-                Future.delayed(const Duration(milliseconds: 100), () {
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      _scrollController.position.maxScrollExtent,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeOut,
+                // Check if widget is still mounted before calling setState
+                if (mounted) {
+                  setState(() {
+                    _isLoadingMessages = false;
+                    _messages.add(message.toChatMessage(currentUserId));
+                    
+                    // Update conversation with trade offer
+                    _updateConversationWithLatestMessage(
+                      username: _currentChatUser!.username,
+                      lastMessage: messageText,
+                      timestamp: DateTime.now(),
+                      isTradeOffer: true
                     );
-                  }
-                });
+                  });
+                  
+                  // Auto-scroll to the bottom
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    if (_scrollController.hasClients) {
+                      _scrollController.animateTo(
+                        _scrollController.position.maxScrollExtent,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  });
+                }
               } catch (e) {
-                setState(() {
-                  _isLoadingMessages = false;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error sending offer: $e')),
-                );
+                // Check if widget is still mounted before calling setState
+                if (mounted) {
+                  setState(() {
+                    _isLoadingMessages = false;
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error sending offer: $e')),
+                  );
+                }
               }
             },
             child: const Text('Send Offer'),

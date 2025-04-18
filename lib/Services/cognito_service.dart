@@ -736,7 +736,7 @@ class Message {
         offer: TradeOffer(
           item: tradeType == 'sell' ? 'Energy Credits Offer' : 'Energy Credits Request',
           amount: '$totalAmount kWh',
-          description: 'Price: \$${pricePerUnit} per kWh',
+          description: 'Price: \$${pricePerUnit?.toStringAsFixed(2)} per kWh',
           isPending: status == 'pending',
           status: status ?? 'pending',
         ),
