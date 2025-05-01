@@ -38,95 +38,90 @@ class _HomePageState extends State<HomePage> {
     // Now you can use userData to display personalized content
     final String username = widget.userData['cognito:username'] ?? 'User';
 
-    return ChangeNotifierProvider<MetaMaskProvider>(
-      create: (context) => MetaMaskProvider()..init(),
-      builder: (context, child) {
-        return Stack(
-          children: [
-            if (themeProvider.isDarkMode) 
-              const AnimatedBackground() 
-            else 
-              const AnimatedBackgroundLight(),
-            Scaffold(
-              backgroundColor: Colors.transparent,
-              appBar: isMobile ? _buildAppBar(context) : null,
-              drawer: isMobile ? _buildDrawer(context) : null,
-              body: Column(
-                children: [
-                  // Profile completion banner
-                  if (_showProfileIncompleteMessage)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      color: Colors.orange.shade800,
-                      child: Row(
-                        children: [
-                          const Icon(Icons.warning_amber_rounded, color: Colors.white),
-                          const SizedBox(width: 16),
-                          const Expanded(
-                            child: Text(
-                              'Your profile is incomplete. Please complete your profile to use all features.',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/profile');
-                            },
-                            style: TextButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.orange.shade800,
-                            ),
-                            child: const Text('Complete Now'),
-                          ),
-                        ],
+    return Stack(
+      children: [
+        if (themeProvider.isDarkMode) 
+          const AnimatedBackground() 
+        else 
+          const AnimatedBackgroundLight(),
+        Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: isMobile ? _buildAppBar(context) : null,
+          drawer: isMobile ? _buildDrawer(context) : null,
+          body: Column(
+            children: [
+              // Profile completion banner
+              if (_showProfileIncompleteMessage)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  color: Colors.orange.shade800,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Text(
+                          'Your profile is incomplete. Please complete your profile to use all features.',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
-                    ),
-                  
-                  // Your existing content
-                  Expanded(
-                    child: Row(
-                      children: [
-                        if (!isMobile) _buildSidebar(context),
-                        
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.all(24.0),
-                            child: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (!isMobile)
-                                    _buildTopBar(context),
-                                    
-                                  const SizedBox(height: 16),
-                                  Text('Dashboard', 
-                                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
-                                  const SizedBox(height: 24),
-                                  
-                                  _buildStatsCards(),
-                                  
-                                  const SizedBox(height: 24),
-                                  
-                                  _buildChartsSection(context),
-                                  
-                                  const SizedBox(height: 24),
-                                  
-                                  _buildTableSection(context),
-                                ],
-                              ),
-                            ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/profile');
+                        },
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.orange.shade800,
+                        ),
+                        child: const Text('Complete Now'),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              // Your existing content
+              Expanded(
+                child: Row(
+                  children: [
+                    if (!isMobile) _buildSidebar(context),
+                    
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(24.0),
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (!isMobile)
+                                _buildTopBar(context),
+                                
+                              const SizedBox(height: 16),
+                              Text('Dashboard', 
+                                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
+                              const SizedBox(height: 24),
+                              
+                              _buildStatsCards(),
+                              
+                              const SizedBox(height: 24),
+                              
+                              _buildChartsSection(context),
+                              
+                              const SizedBox(height: 24),
+                              
+                              _buildTableSection(context),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        );
-      }
+            ],
+          ),
+        ),
+      ],
     );
   }
   
@@ -208,7 +203,7 @@ class _HomePageState extends State<HomePage> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return Consumer<MetaMaskProvider>(
       builder: (context, provider, child) {
-        if (provider.isConnected && provider.isInOperatingChain) {
+        if (provider.isConnected && !provider.isInOperatingChain) {
           return ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.transparent,
@@ -234,7 +229,15 @@ class _HomePageState extends State<HomePage> {
         } else if (provider.isEnabled) {
           return IconButton(
             icon: Icon(Icons.wallet, color: themeProvider.textColor),
-            onPressed: () => context.read<MetaMaskProvider>().connect(),
+            onPressed: () {
+              context.read<MetaMaskProvider>().connect().then((_) {
+                // Debug prints
+                debugPrint("Connected: ${context.read<MetaMaskProvider>().isConnected}");
+                debugPrint("In operating chain: ${context.read<MetaMaskProvider>().isInOperatingChain}");
+                debugPrint("Chain ID: ${context.read<MetaMaskProvider>().currentChain}");
+                debugPrint("Balance: ${context.read<MetaMaskProvider>().currentBalance}");
+              });
+            },
           );
         } else {
           return const SizedBox.shrink();

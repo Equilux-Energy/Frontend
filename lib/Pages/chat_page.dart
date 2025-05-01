@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -5,24 +8,34 @@ import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'package:test_web/Services/cognito_service.dart';
+import '../Services/blockchain_service.dart';
+import '../Models/energy_offer.dart';
 
+import '../Services/metamask.dart';
+import '../Services/theme_provider.dart';
 import '../Services/user_service.dart';
 
 enum MessageType { text, offer }
 
 class TradeOffer {
-  final String item;           // Display name of trade
-  final String amount;         // Text representation of amount (with units)
-  final String description;    // Additional description text
-  final bool isPending;        // Quick check if pending
-  final String status;         // "pending", "accepted", "rejected"
-  final double pricePerUnit;   // Numeric price per kWh
-  final int totalAmount;       // Numeric amount in kWh
-  final DateTime startTime;    // When the trade starts
-  final String tradeType;      // "buy" or "sell"
+  final String messageId;       // Added messageId field
+  final String item;
+  final String amount;
+  final String description;
+  final bool isPending;
+  final String status;
+  final double pricePerUnit;
+  final int totalAmount;
+  final DateTime startTime;
+  final String tradeType;
+  final bool isNegotiating;
+  final Map<String, dynamic>? latestProposal;
+  final String? transactionHash; // Add blockchain transaction hash
   
   TradeOffer({
+    required this.messageId,    // Make it required
     required this.item,
     required this.amount,
     this.description = '',
@@ -32,6 +45,9 @@ class TradeOffer {
     required this.totalAmount,
     required this.startTime,
     required this.tradeType,
+    this.isNegotiating = false,
+    this.latestProposal,
+    this.transactionHash,
   });
 }
 
@@ -41,6 +57,7 @@ class ChatMessage {
   final DateTime time;
   final MessageType type;
   final TradeOffer? offer;
+  final String? messageId; // Add this field
   
   ChatMessage({
     required this.text, 
@@ -48,6 +65,7 @@ class ChatMessage {
     required this.time,
     this.type = MessageType.text,
     this.offer,
+    this.messageId,
   });
 }
 
@@ -55,8 +73,11 @@ class ChatMessage {
 class ChatUser {
   final String userId;
   final String username;
-  
-  ChatUser({required this.userId, required this.username});
+
+  ChatUser({
+    required this.userId,
+    required this.username,
+  });
   
   factory ChatUser.fromJson(Map<String, dynamic> json) {
     return ChatUser(
@@ -78,7 +99,7 @@ class ChatPage extends StatefulWidget {
   _ChatPageState createState() => _ChatPageState();
 }
 
-class _ChatPageState extends State<ChatPage> {
+class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _focusNode = FocusNode();
@@ -90,6 +111,8 @@ class _ChatPageState extends State<ChatPage> {
   ChatUser? _currentChatUser;
   bool _showUsersList = false; // To toggle between conversations and all users
   String? _nextPageToken;
+  final BlockchainService _blockchainService = BlockchainService();
+  bool _isWalletConnected = false;
   
   List<ChatMessage> _messages = [];
   List<ChatUser> _users = [];
@@ -97,12 +120,35 @@ class _ChatPageState extends State<ChatPage> {
   List<Conversation> _conversations = [];
   List<Conversation> _filteredConversations = [];
   
+  // Polling mechanism variables
+  Timer? _pollingTimer;
+  bool _isPolling = false;
+  DateTime? _lastMessageTimestamp;
+  int _pollingInterval = 3; // Start with 3 seconds
+  int _consecutiveErrorCount = 0;
+  final int _maxPollingInterval = 30; // Maximum 30 seconds between polls
+
+  // Add these variables to your _ChatPageState class
+  Timer? _refreshTimer;
+  bool _isRefreshEnabled = false;
+
   @override
   void initState() {
     super.initState();
+    _checkWalletConnection();
     _fetchRecentConversations();
+    
+    // Add page visibility listener for more efficient polling
+    WidgetsBinding.instance.addObserver(this);
   }
   
+  Future<void> _checkWalletConnection() async {
+    await _blockchainService.initialize();
+    setState(() {
+      _isWalletConnected = _blockchainService.isWalletConnected(context);
+    });
+  }
+
   Future<void> _fetchRecentConversations() async {
     setState(() {
       _isLoadingConversations = true;
@@ -154,23 +200,27 @@ class _ChatPageState extends State<ChatPage> {
     try {
       final cognitoService = CognitoService();
       final messageResponse = await cognitoService.getMessagesBetweenUsers(username);
-      debugPrint('Fetched messages: $messageResponse');
       
       final currentUserId = widget.userData?['cognito:username'] ?? '';
-      debugPrint('Current user ID: $currentUserId');
       
       setState(() {
         _messages = messageResponse.messages
             .map((msg) => msg.toChatMessage(currentUserId))
-            .toList().reversed.toList(); // Reverse the order to show latest messages at the bottom
+            .toList().reversed.toList();
         _nextPageToken = messageResponse.nextPageToken;
         _isLoadingMessages = false;
+        
+        // Set the timestamp for future polling
+        if (_messages.isNotEmpty) {
+          _lastMessageTimestamp = _messages.first.time;
+        }
       });
+      
       Future.delayed(const Duration(milliseconds: 100), () {
-    if (_scrollController.hasClients) {
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-    }
-  });
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
     } catch (e) {
       if (kDebugMode) {
         print('Exception when loading messages: $e');
@@ -210,9 +260,14 @@ class _ChatPageState extends State<ChatPage> {
     setState(() {
       _currentChatUser = user;
       _showUsersList = false;  // Return to conversations view
+      _messages = []; // Clear previous messages
+      _isLoadingMessages = true;
     });
     
-    _loadMessageHistory(user.username);
+    _loadMessageHistory(user.username).then((_) {
+      // Start message refresh once initial messages are loaded
+      _startMessageRefresh();
+    });
   }
   
   void _openConversation(String username) {
@@ -293,6 +348,10 @@ class _ChatPageState extends State<ChatPage> {
             ),
           ),
         ),
+        actions: [
+          _buildWalletButton(),
+          // Other actions...
+        ],
       ) : null,
       body: Container(
         decoration: BoxDecoration(
@@ -765,215 +824,269 @@ class _ChatPageState extends State<ChatPage> {
 
   // Update the offer card to show status properly
   Widget _buildOfferCard(TradeOffer offer, bool isUserSender) {
-    // Determine status colors and text
-    Color statusColor;
-    String statusText = offer.status;
-    
-    switch (offer.status.toLowerCase()) {
-      case 'accepted':
-        statusColor = Colors.green.shade400;
-        statusText = 'Offer Accepted';
-        break;
-      case 'rejected':
-        statusColor = Colors.red.shade400;
-        statusText = 'Offer Rejected';
-        break;
-      case 'pending':
-      default:
-        statusColor = Colors.amber.shade400;
-        statusText = 'Pending Response';
-    }
+  // Determine status colors and text
+  Color statusColor;
+  String statusText = offer.status;
+  
+  switch (offer.status.toLowerCase()) {
+    case 'accepted':
+      statusColor = Colors.green.shade400;
+      statusText = 'Offer Accepted';
+      break;
+    case 'rejected':
+      statusColor = Colors.red.shade400;
+      statusText = 'Offer Rejected';
+      break;
+    case 'pending':
+    default:
+      statusColor = Colors.amber.shade400;
+      statusText = 'Pending Response';
+  }
 
-    // Calculate total value
-    final totalValue = offer.pricePerUnit * offer.totalAmount;
+  // Calculate total value
+  final totalValue = offer.pricePerUnit * offer.totalAmount;
 
-    return Container(
-      width: 280,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF5C005C),
-            const Color(0xFF3A0030),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.purple.shade300.withOpacity(0.5),
-          width: 1.5,
-        ),
+  return Container(
+    width: 280,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          const Color(0xFF5C005C),
+          const Color(0xFF3A0030),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Trade offer title
-          Row(
-            children: [
-              Icon(
-                offer.tradeType == 'sell' ? Icons.arrow_upward : Icons.arrow_downward,
-                color: offer.tradeType == 'sell' ? Colors.green : Colors.blue,
-                size: 18,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(
+        color: Colors.purple.shade300.withOpacity(0.5),
+        width: 1.5,
+      ),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Trade offer title
+        Row(
+          children: [
+            Icon(
+              offer.tradeType == 'sell' ? Icons.arrow_upward : Icons.arrow_downward,
+              color: offer.tradeType == 'sell' ? Colors.green : Colors.blue,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                offer.item,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  offer.item,
+            ),
+          ],
+        ),
+        
+        // Display description if it's not empty
+        if (offer.description.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              offer.description,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+        
+        const SizedBox(height: 12),
+        
+        // Amount, price and total value
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Amount',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                Text(
+                  '${offer.totalAmount} kWh',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 12),
-          
-          // Amount, price and total value
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Amount',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  Text(
-                    '${offer.totalAmount} kWh',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Price',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  Text(
-                    '\$${offer.pricePerUnit.toStringAsFixed(2)}/kWh',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 8),
-          
-          // Total value and start date
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Start Date',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  Text(
-                    DateFormat('MMM d, yyyy').format(offer.startTime),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  const Text(
-                    'Total Value',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                  Text(
-                    '\$${totalValue.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          
-          const SizedBox(height: 12),
-          const Divider(color: Colors.white24),
-          const SizedBox(height: 8),
-          
-          // Status and action buttons
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Only show Accept/Decline buttons if:
-              // 1. Offer is pending AND
-              // 2. Current user is the RECEIVER (not the sender)
-              if (offer.status.toLowerCase() == 'pending' && !isUserSender) ...[
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    minimumSize: const Size(40, 36),
-                  ),
-                  onPressed: () {},
-                  child: const Text('Accept'),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    minimumSize: const Size(40, 36),
-                    side: const BorderSide(color: Colors.white30),
-                    foregroundColor: Colors.white70,
-                  ),
-                  onPressed: () {},
-                  child: const Text('Decline'),
-                ),
-              ] else ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: statusColor,
-                      width: 1,
-                    ),
-                  ),
-                  child: Text(
-                    statusText,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    fontSize: 15,
                   ),
                 ),
               ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Text(
+                  'Price',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                Text(
+                  '\$${offer.pricePerUnit.toStringAsFixed(2)}/kWh',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        
+        const SizedBox(height: 8),
+        
+        // Total value and start date
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Start Date',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                Text(
+                  DateFormat('MMM d, yyyy').format(offer.startTime),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Text(
+                  'Total Value',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                Text(
+                  '\$${totalValue.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        
+        const SizedBox(height: 12),
+        const Divider(color: Colors.white24),
+        const SizedBox(height: 8),
+        
+        // Status and action buttons
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            // Only show Accept/Decline/Counter buttons if:
+            // 1. Offer is pending AND
+            // 2. Current user is the RECEIVER (not the sender)
+            if (offer.status.toLowerCase() == 'pending' && !isUserSender) ...[
+              // Counter offer button
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: const Size(40, 36),
+                  side: const BorderSide(color: Colors.blue),
+                  foregroundColor: Colors.blue,
+                ),
+                onPressed: () => _showCounterOfferDialog(offer),
+                child: const Text('Counter'),
+              ),
+              const SizedBox(width: 8),
+              // Accept button
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green.shade700,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: const Size(40, 36),
+                ),
+                onPressed: () => _respondToOffer(offer.messageId, 'accept'),
+                child: const Text('Accept'),
+              ),
+              const SizedBox(width: 8),
+              // Decline button
+              OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: const Size(40, 36),
+                  side: BorderSide(color: Color(0xFFE57373)),
+                  foregroundColor: Colors.red.shade300,
+                ),
+                onPressed: () => _respondToOffer(offer.messageId, 'reject'),
+                child: const Text('Decline'),
+              ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: statusColor,
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        // Add blockchain info if available
+        if (offer.transactionHash != null && offer.transactionHash!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.link, size: 14, color: Colors.teal.shade300),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'TX: ${offer.transactionHash!.substring(0, 10)}...',
+                  style: TextStyle(
+                    color: Colors.teal.shade300,
+                    fontSize: 12,
+                    fontFamily: 'Courier',
+                  ),
+                ),
+              ),
             ],
           ),
         ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
+}
   
   Widget _buildAvatar() {
     return const CircleAvatar(
@@ -998,113 +1111,99 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    _focusNode.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-  
-  void _sendMessage() async {
-  final text = _messageController.text.trim();
-  if (text.isEmpty || _currentChatUser == null) return;
-
-  _messageController.value = TextEditingValue.empty;
-  
-  // Optimistically add the message to the UI
-  final newMessage = ChatMessage(
-    text: text,
-    isUser: true,
-    time: DateTime.now(),
-  );
-  
-  final now = DateTime.now();
-  
-  setState(() {
-    _messages.add(newMessage);
-    
-    // Update conversation list with this new message
-    _updateConversationWithLatestMessage(
-      username: _currentChatUser!.username,
-      lastMessage: text,
-      timestamp: now,
-      isTradeOffer: false
-    );
-  });
-  
-  // Auto-scroll to the bottom
-  Future.delayed(const Duration(milliseconds: 100), () {
+  void _scrollToBottom() {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
-      _messageController.value = TextEditingValue.empty;
     }
-  });
-  
-  // Actually send the message
-  try {
-    final cognitoService = CognitoService();
-    await cognitoService.sendTextMessage(
-      recipientUsername: _currentChatUser!.username,
-      text: text,
-    );
-  } catch (e) {
-    if (kDebugMode) {
-      print('Error sending message: $e');
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Failed to send message: ${e.toString()}')),
-    );
   }
-}
 
-// Add this helper method to update the conversation list
-void _updateConversationWithLatestMessage({
-  required String username,
-  required String lastMessage,
-  required DateTime timestamp,
-  required bool isTradeOffer,
-}) {
-  // Check if this conversation already exists
-  final existingIndex = _conversations.indexWhere((conversation) => 
-    conversation.username == username);
-
-  if (existingIndex != -1) {
-    // Remove the existing conversation
-    final existingConvo = _conversations.removeAt(existingIndex);
+  @override
+  void dispose() {
+    _stopMessageRefresh();
+    _messageController.dispose();
+    _scrollController.dispose();
+    _focusNode.dispose();
+    _searchController.dispose();
     
-    // Create updated conversation with new message
-    final updatedConvo = Conversation(
-      username: existingConvo.username,
-      lastMessage: lastMessage,
-      timestamp: timestamp,
-      updatedAt: timestamp,
-      isTradeOffer: isTradeOffer,
-    );
+    // Remove visibility observer
+    WidgetsBinding.instance.removeObserver(this);
     
-    // Add it to the beginning of the list
-    _conversations.insert(0, updatedConvo);
-  } else {
-    // Create a new conversation and add it to the beginning
-    final newConvo = Conversation(
-      username: username,
-      lastMessage: lastMessage,
-      timestamp: timestamp,
-      updatedAt: timestamp,
-      isTradeOffer: isTradeOffer,
-    );
-    
-    _conversations.insert(0, newConvo);
+    super.dispose();
   }
   
-  // Update filtered conversations as well
-  _filteredConversations = List.from(_conversations);
-}
+  void _sendMessage() {
+    final text = _messageController.text.trim();
+    if (text.isEmpty || _currentChatUser == null) return;
+    
+    final now = DateTime.now();
+    
+    setState(() {
+      _messages.add(ChatMessage(
+        text: text,
+        isUser: true,
+        time: now,
+      ));
+      
+      _updateConversationWithLatestMessage(
+        username: _currentChatUser!.username,
+        lastMessage: text,
+        timestamp: now,
+        isTradeOffer: false,
+      );
+    });
+    
+    // Clear the text field
+    _messageController.clear();
+    
+    _scrollToBottom();
+  }
+
+  // Add this helper method to update the conversation list
+  void _updateConversationWithLatestMessage({
+    required String username,
+    required String lastMessage,
+    required DateTime timestamp,
+    required bool isTradeOffer,
+  }) {
+    // Check if this conversation already exists
+    final existingIndex = _conversations.indexWhere((conversation) => 
+      conversation.username == username);
+
+    if (existingIndex != -1) {
+      // Remove the existing conversation
+      final existingConvo = _conversations.removeAt(existingIndex);
+      
+      // Create updated conversation with new message
+      final updatedConvo = Conversation(
+        username: existingConvo.username,
+        lastMessage: lastMessage,
+        timestamp: timestamp,
+        updatedAt: timestamp,
+        isTradeOffer: isTradeOffer,
+      );
+      
+      // Add it to the beginning of the list
+      _conversations.insert(0, updatedConvo);
+    } else {
+      // Create a new conversation and add it to the beginning
+      final newConvo = Conversation(
+        username: username,
+        lastMessage: lastMessage,
+        timestamp: timestamp,
+        updatedAt: timestamp,
+        isTradeOffer: isTradeOffer,
+      );
+      
+      _conversations.insert(0, newConvo);
+    }
+    
+    // Update filtered conversations as well
+    _filteredConversations = List.from(_conversations);
+  }
   
   void _showNewOfferDialog() {
   final amountController = TextEditingController();
@@ -1279,10 +1378,21 @@ void _updateConversationWithLatestMessage({
                   _isLoadingMessages = true;
                 });
                 
+                // Create offer on blockchain
+                final txHash = await _blockchainService.createEnergyOffer(
+                  context: context,
+                  amount: amount.toDouble(),
+                  pricePerUnit: price,
+                  startTime: selectedDate,
+                  endTime: selectedDate.add(const Duration(days: 30)), // Example: 30 days from startTime
+                  isSelling: tradeType == 'sell'
+                );
+                
+                // Now send the message through Cognito
                 final cognitoService = CognitoService();
                 final message = await cognitoService.sendTradeOffer(
                   recipientUsername: _currentChatUser!.username,
-                  text: messageText,
+                  text: "$messageText\nTransaction Hash: $txHash",
                   pricePerUnit: price,
                   startTime: selectedDate,
                   totalAmount: amount,
@@ -1402,6 +1512,7 @@ void _updateConversationWithLatestMessage({
               _buildNavItem(context, 'Chat', Icons.chat, true, "/chat"),
               _buildNavItem(context, 'Settings', Icons.settings, false, "/settings"),
               _buildNavItem(context, 'Support', Icons.support, false, ""),
+              _buildWalletButton()
             ],
           ),
         ),
@@ -1486,6 +1597,653 @@ void _updateConversationWithLatestMessage({
       _isLoadingUsers = false;
       // Fallback to dummy data
     });
+  }
+}
+
+Future<void> _respondToOffer(String messageId, String response) async {
+  // Show loading indicator
+  setState(() {
+    _isLoadingMessages = true;
+  });
+  
+  try {
+    // Check if wallet is connected (for UI only)
+    final walletConnected = context.read<MetaMaskProvider>().isConnected;
+    if (!walletConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please connect your wallet first')),
+      );
+      setState(() {
+        _isLoadingMessages = false;
+      });
+      return;
+    }
+    
+    // Use Cognito API for the actual response
+    final cognitoService = CognitoService();
+    final updatedMessage = await cognitoService.respondToTradeOffer(
+      messageId: messageId,
+      response: response,
+    );
+    
+    // Now refresh messages to show updated status
+    await _loadMessageHistory(_currentChatUser!.username);
+    
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          response == 'accept' 
+              ? 'Offer accepted successfully!'
+              : 'Offer declined',
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: response == 'accept' ? Colors.green : Colors.red,
+      ),
+    );
+  } catch (e) {
+    setState(() {
+      _isLoadingMessages = false;
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error: $e')),
+    );
+  }
+}
+
+void _showCounterOfferDialog(TradeOffer originalOffer) {
+  // Pre-populate with original values but allow adjustments
+  final amountController = TextEditingController(text: originalOffer.totalAmount.toString());
+  final priceController = TextEditingController(text: originalOffer.pricePerUnit.toStringAsFixed(2));
+  final descriptionController = TextEditingController(text: 'Here is my counter offer');
+  
+  // Use original start time but allow changing
+  DateTime selectedDate = originalOffer.startTime;
+  
+  showDialog(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setDialogState) => AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text('Counter Offer', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Note about counter offer
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                ),
+                child: const Text(
+                  'Propose new price or quantity for this trade.',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Trade type information (read-only in counter offer)
+              const Text('Trade Type:', style: TextStyle(color: Colors.white70)),
+              Text(
+                originalOffer.tradeType == 'sell' ? 'Selling Energy' : 'Buying Energy',
+                style: TextStyle(
+                  color: originalOffer.tradeType == 'sell' ? Colors.green : Colors.blue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                decoration: const InputDecoration(
+                  labelText: 'Amount (kWh)',
+                  labelStyle: TextStyle(color: Colors.white70),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white30),
+                  ),
+                ),
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+              ),
+              
+              const SizedBox(height: 16),
+              TextField(
+                controller: priceController,
+                decoration: const InputDecoration(
+                  labelText: 'Price per kWh (\$)',
+                  labelStyle: TextStyle(color: Colors.white70),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white30),
+                  ),
+                ),
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.number,
+              ),
+              
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Start Date: ', style: TextStyle(color: Colors.white70)),
+                  TextButton(
+                    onPressed: () async {
+                      final DateTime? picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                        builder: (context, child) {
+                          return Theme(
+                            data: ThemeData.dark().copyWith(
+                              colorScheme: const ColorScheme.dark(
+                                primary: Colors.purple,
+                                onPrimary: Colors.white,
+                                surface: Color(0xFF2A0030),
+                                onSurface: Colors.white,
+                              ),
+                            ),
+                            child: child!,
+                          );
+                        },
+                      );
+                      if (picked != null) {
+                        setDialogState(() {
+                          selectedDate = picked;
+                        });
+                      }
+                    },
+                    child: Text(
+                      DateFormat('MMM d, yyyy').format(selectedDate),
+                      style: const TextStyle(color: Colors.purpleAccent),
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Message',
+                  labelStyle: TextStyle(color: Colors.white70),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Colors.white30),
+                  ),
+                ),
+                style: const TextStyle(color: Colors.white),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            onPressed: () => Navigator.pop(context),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue.shade700,
+            ),
+            onPressed: () async {
+              try {
+                // Check if wallet is connected (for UI only)
+                final walletConnected = context.read<MetaMaskProvider>().isConnected;
+                if (!walletConnected) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please connect your wallet first')),
+                  );
+                  return;
+                }
+                
+                // Convert inputs to correct types
+                final amount = int.tryParse(amountController.text);
+                final price = double.tryParse(priceController.text);
+                
+                if (amount == null || price == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter valid numbers')),
+                  );
+                  return;
+                }
+                
+                // Close dialog before async operations
+                Navigator.pop(dialogContext);
+                
+                // Show loading indicator
+                setState(() {
+                  _isLoadingMessages = true;
+                });
+                
+                // Update counter offer in Cognito API
+                final cognitoService = CognitoService();
+                await cognitoService.respondToTradeOffer(
+                  messageId: originalOffer.messageId,
+                  response: 'counter',
+                  pricePerUnit: price,
+                  totalAmount: amount,
+                  counterText: descriptionController.text,
+                );
+                
+                // Refresh messages
+                await _loadMessageHistory(_currentChatUser!.username);
+                
+                // Show success message
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Counter offer sent!'),
+                      backgroundColor: Colors.blue,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  setState(() {
+                    _isLoadingMessages = false;
+                  });
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error sending counter offer: $e')),
+                  );
+                }
+              }
+            },
+            child: const Text('Send Counter Offer'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildWalletButton() {
+  return Consumer<MetaMaskProvider>(
+    builder: (context, provider, child) {
+      return ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: provider.isConnected ? Colors.green.shade800 : Colors.purple.shade800,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+        icon: Icon(
+          provider.isConnected ? Icons.account_balance_wallet : Icons.link,
+          color: Colors.white,
+        ),
+        label: Text(
+          provider.isConnected 
+              ? 'Wallet Connected' 
+              : 'Connect Wallet',
+          style: const TextStyle(color: Colors.white),
+        ),
+        onPressed: () async {
+          if (provider.isConnected) {
+            // Show wallet details
+            _showWalletDetailsDialog(context, provider);
+          } else {
+            // Connect wallet
+            await provider.connect();
+            // State will update through provider
+          }
+        },
+      );
+    }
+  );
+}
+
+void _showWalletDetailsDialog(BuildContext context, MetaMaskProvider provider) {
+  showDialog(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: const Color(0xFF2A0030),
+      title: const Text('Wallet Details', style: TextStyle(color: Colors.white)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Address: ${provider.currentAddress}',
+            style: const TextStyle(color: Colors.white),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Balance: ${provider.currentBalance} ETH',
+            style: const TextStyle(color: Colors.white),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          child: const Text('Disconnect', style: TextStyle(color: Colors.red)),
+          onPressed: () {
+            provider.disconnect();
+            Navigator.pop(context);
+          },
+        ),
+        TextButton(
+          child: const Text('Close', style: TextStyle(color: Colors.white)),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ],
+    ),
+  );
+}
+
+// Start message polling
+void _startMessagePolling() {
+  if (_isPolling) return;
+  
+  _isPolling = true;
+  
+  // Set initial last message timestamp if we have messages
+  if (_messages.isNotEmpty) {
+    _lastMessageTimestamp = _messages.first.time; // First because we reversed the list
+  }
+  
+  // Initial poll immediately
+  _pollForNewMessages();
+  
+  // Schedule regular polling
+  _pollingTimer = Timer.periodic(Duration(seconds: _pollingInterval), (timer) {
+    _pollForNewMessages();
+  });
+  
+  if (kDebugMode) {
+    print('Started message polling at ${_pollingInterval}s intervals');
+  }
+}
+
+// Stop message polling
+void _stopMessagePolling() {
+  _pollingTimer?.cancel();
+  _pollingTimer = null;
+  _isPolling = false;
+  
+  if (kDebugMode) {
+    print('Stopped message polling');
+  }
+}
+
+// Poll for new messages - optimized to only fetch truly new messages
+Future<void> _pollForNewMessages() async {
+  if (_currentChatUser == null || _isLoadingMessages) return;
+  
+  try {
+    final cognitoService = CognitoService();
+    
+    // Get messages after our latest message timestamp
+    final messageResponse = await cognitoService.getMessagesBetweenUsers(
+      _currentChatUser!.username,
+      since: _lastMessageTimestamp,
+    );
+    
+    final currentUserId = widget.userData?['cognito:username'] ?? '';
+    
+    if (messageResponse.messages.isNotEmpty) {
+      // Keep track of existing message IDs to avoid duplicates
+      final existingMessageIds = _messages.map((m) => 
+        m.offer?.messageId ?? '').toSet();
+      
+      // Filter out messages we already have
+      final newMessages = messageResponse.messages
+          .where((msg) => !existingMessageIds.contains(msg.messageId))
+          .map((msg) => msg.toChatMessage(currentUserId))
+          .toList()
+          .reversed
+          .toList();
+      
+      if (newMessages.isNotEmpty) {
+        if (kDebugMode) {
+          print('Adding ${newMessages.length} new messages');
+        }
+        
+        setState(() {
+          // Append only new messages to the existing list
+          _messages.addAll(newMessages);
+          
+          // Update timestamp to the newest message
+          _lastMessageTimestamp = newMessages.last.time;
+          
+          // Update conversation list with the latest message if needed
+          final latestMsg = newMessages.last;
+          _updateConversationWithLatestMessage(
+            username: _currentChatUser!.username,
+            lastMessage: latestMsg.text,
+            timestamp: latestMsg.time,
+            isTradeOffer: latestMsg.type == MessageType.offer,
+          );
+        });
+        
+        // Auto-scroll if user was already at the bottom
+        if (_isScrolledToBottom()) {
+          _scrollToBottom();
+        }
+      }
+      
+      // Reset polling interval on successful fetch
+      _consecutiveErrorCount = 0;
+      _pollingInterval = 3;
+      _updatePollingRate();
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      print('Error polling for messages: $e');
+    }
+    
+    // Implement exponential backoff for failed requests
+    _consecutiveErrorCount++;
+    _pollingInterval = min(_pollingInterval * 2, _maxPollingInterval);
+    _updatePollingRate();
+  }
+}
+
+// Update polling rate if needed
+void _updatePollingRate() {
+  if (_pollingTimer != null && _pollingTimer!.isActive) {
+    _stopMessagePolling();
+    _startMessagePolling();
+  }
+}
+
+// Check if user has scrolled to the bottom
+bool _isScrolledToBottom() {
+  if (!_scrollController.hasClients) return true;
+  
+  final maxScroll = _scrollController.position.maxScrollExtent;
+  final currentScroll = _scrollController.offset;
+  // Consider "close enough" to bottom (within 50 pixels)
+  return maxScroll - currentScroll <= 50;
+}
+
+// Add this to cognito_service.dart
+Future<MessageResponse> getMessagesBetweenUsers(String username, {DateTime? since}) async {
+  try {
+    final token = await CognitoService().getIdToken();
+    
+    String url = '${ChatConfig.baseUrl}/dev/api/messages/$username';
+    
+    // Add since parameter if provided
+    if (since != null) {
+      final sinceParam = since.toUtc().toIso8601String();
+      url += '?since=$sinceParam';
+    }
+    
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return MessageResponse.fromJson(data);
+    } else {
+      throw Exception('Failed to get messages: ${response.statusCode}');
+    }
+  } catch (e) {
+    throw Exception('Error getting messages: $e');
+  }
+}
+
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (_currentChatUser == null) return;
+  
+  if (state == AppLifecycleState.resumed) {
+    // App is in the foreground - start refresh timer
+    _startMessageRefresh();
+    
+    // Also do an immediate refresh
+    _refreshMessages();
+  } else if (state == AppLifecycleState.paused) {
+    // App is in the background - stop refresh timer to save resources
+    _stopMessageRefresh();
+  }
+}
+
+// Add this method to start the refresh timer
+void _startMessageRefresh() {
+  // Cancel any existing timer
+  _stopMessageRefresh();
+  
+  // Start a new timer that refreshes every 3 seconds
+  _isRefreshEnabled = true;
+  _refreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    if (_currentChatUser != null && _isRefreshEnabled) {
+      _refreshMessages();
+    }
+  });
+  
+  if (kDebugMode) {
+    print('Started message refresh timer');
+  }
+}
+
+// Add this method to stop the refresh timer
+void _stopMessageRefresh() {
+  _refreshTimer?.cancel();
+  _refreshTimer = null;
+  _isRefreshEnabled = false;
+  
+  if (kDebugMode) {
+    print('Stopped message refresh timer');
+  }
+}
+
+// Add this method to refresh messages without clearing the UI
+Future<void> _refreshMessages() async {
+  if (_currentChatUser == null || _isLoadingMessages) return;
+  
+  try {
+    final cognitoService = CognitoService();
+    final messageResponse = await cognitoService.getMessagesBetweenUsers(_currentChatUser!.username);
+    
+    final currentUserId = widget.userData?['cognito:username'] ?? '';
+    
+    final updatedMessages = messageResponse.messages
+        .map((msg) => msg.toChatMessage(currentUserId))
+        .toList()
+        .reversed
+        .toList();
+        
+    // Only update if we have new messages (compare counts)
+    if (updatedMessages.length > _messages.length) {
+      // Get the most recent message to update sidebar
+      final latestMessage = updatedMessages.last;
+      
+      setState(() {
+        _messages = updatedMessages;
+        
+        // Update conversation sidebar with latest message info
+        _updateConversationWithLatestMessage(
+          username: _currentChatUser!.username,
+          lastMessage: latestMessage.text,
+          timestamp: latestMessage.time,
+          isTradeOffer: latestMessage.type == MessageType.offer,
+        );
+      });
+      
+      // Auto-scroll if user was already at the bottom
+      if (_isScrolledToBottom()) {
+        _scrollToBottom();
+      }
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      print('Error refreshing messages: $e');
+    }
+  }
+}
+
+// Update _sendTradeOffer to use Cognito API
+Future<void> _sendTradeOffer({
+  required String text,
+  required double price,
+  required int amount,
+  required DateTime startTime,
+  required String tradeType,
+}) async {
+  try {
+    // Check if wallet is connected (for UI only)
+    final walletConnected = context.read<MetaMaskProvider>().isConnected;
+    if (!walletConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please connect your wallet first')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoadingMessages = true;
+    });
+    
+    // Send the message through Cognito API
+    final cognitoService = CognitoService();
+    final message = await cognitoService.sendTradeOffer(
+      recipientUsername: _currentChatUser!.username,
+      text: text,
+      pricePerUnit: price,
+      startTime: startTime,
+      totalAmount: amount,
+      tradeType: tradeType,
+    );
+    
+    // Get current user ID for the message conversion
+    final userData = await cognitoService.getUserInfo();
+    final currentUserId = userData?['cognito:username'] ?? '';
+    
+    setState(() {
+      _isLoadingMessages = false;
+      _messages.add(message.toChatMessage(currentUserId));
+      
+      // Update conversation with trade offer
+      _updateConversationWithLatestMessage(
+        username: _currentChatUser!.username,
+        lastMessage: text,
+        timestamp: DateTime.now(),
+        isTradeOffer: true
+      );
+    });
+    
+    // Auto-scroll to the bottom
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  } catch (e) {
+    setState(() {
+      _isLoadingMessages = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error creating offer: $e')),
+    );
   }
 }
 }

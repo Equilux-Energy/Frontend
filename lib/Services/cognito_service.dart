@@ -324,7 +324,7 @@ class CognitoService {
     final token = await _getIdToken();
     
     final response = await http.get(
-      Uri.parse('https://qiinzvnutc.eu-west-1.awsapprunner.com/dev/api/messages/users'),
+      Uri.parse('https://7kmm5scesa.eu-west-1.awsapprunner.com/dev/api/messages/users'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json'
@@ -395,7 +395,8 @@ Future<MessageResponse> getMessagesBetweenUsers(
   String otherUsername, {
   int limit = 20,
   String? lastEvaluatedKey,
-  bool oldestFirst = false,
+  bool oldestFirst = false, 
+  DateTime? since,
 }) async {
   try {
     final token = await _getIdToken();
@@ -455,6 +456,10 @@ Future<MessageResponse> getMessagesBetweenUsers(
   Future<String?> _getIdToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('id_token');
+  }
+
+  Future<String?> getIdToken() async {
+    return await _getIdToken();
   }
   
   Future<String?> _getRefreshToken() async {
@@ -618,10 +623,74 @@ Future<MessageResponse> getMessagesBetweenUsers(
       throw Exception('Error sending trade offer: $e');
     }
   }
+
+  Future<Message> respondToTradeOffer({
+    required String messageId,
+    required String response, // 'accept', 'reject', or 'counter'
+    double? pricePerUnit,
+    DateTime? startTime,
+    int? totalAmount,
+    String? tradeType,
+    String? counterText,
+  }) async {
+    try {
+      final token = await _getIdToken();
+      
+      // Build the request body based on response type
+      final Map<String, dynamic> payload = {
+        'response': response,
+      };
+      
+      // For counter offers, include only required parameters for the simplified format
+      if (response == 'counter') {
+        if (pricePerUnit == null || totalAmount == null) {
+          throw Exception('Price and amount are required for counter offers');
+        }
+        
+        // Only include essential parameters
+        payload['pricePerUnit'] = pricePerUnit;
+        payload['totalAmount'] = totalAmount;
+        
+        // Add optional parameters only if provided
+        if (startTime != null) {
+          payload['startTime'] = startTime.toUtc().toIso8601String();
+        }
+        
+        if (tradeType != null) {
+          payload['tradeType'] = tradeType;
+        }
+        
+        if (counterText != null && counterText.isNotEmpty) {
+          payload['text'] = counterText;
+        }
+      }
+      
+      debugPrint('Uri: ${Uri.parse('${ChatConfig.baseUrl}/dev/api/messages/trades/$messageId/respond')}');
+      debugPrint('Responding to trade offer with payload: $payload');
+
+      final responseData = await http.post(
+        Uri.parse('${ChatConfig.baseUrl}/dev/api/messages/trades/$messageId/respond'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+        body: jsonEncode(payload),
+      );
+      
+      if (responseData.statusCode == 200) {
+        final data = jsonDecode(responseData.body);
+        return Message.fromJson(data);
+      } else {
+        throw Exception('Failed to respond to trade offer: ${responseData.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error responding to trade offer: $e');
+    }
+  }
 }
 
 class ChatConfig {
-  static const String baseUrl = 'https://qiinzvnutc.eu-west-1.awsapprunner.com';
+  static const String baseUrl = 'https://7kmm5scesa.eu-west-1.awsapprunner.com';
 }
 
 class Conversation {
@@ -692,6 +761,8 @@ class Message {
   final int? totalAmount;
   final String? status;
   final String? tradeType;
+  final Map<String, dynamic>? currentProposal;
+  final List<Map<String, dynamic>>? negotiationHistory;
   
   Message({
     required this.messageId,
@@ -705,6 +776,8 @@ class Message {
     this.totalAmount,
     this.status,
     this.tradeType,
+    this.currentProposal,
+    this.negotiationHistory,
   });
   
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -720,6 +793,10 @@ class Message {
       totalAmount: json['totalAmount'],
       status: json['status'],
       tradeType: json['tradeType'],
+      currentProposal: json['currentProposal'],
+      negotiationHistory: json['negotiationHistory'] != null 
+          ? List<Map<String, dynamic>>.from(json['negotiationHistory']) 
+          : null,
     );
   }
   
@@ -727,21 +804,65 @@ class Message {
     final bool isCurrentUserSender = senderId == currentUserId;
     
     if (messageType == 'tradeOffer') {
+      // Extract transaction hash from text if present
+      String txHash;
+      String displayText = text;
+      
+      final txHashMatch = RegExp(r'Transaction Hash: (0x[a-fA-F0-9]+)').firstMatch(text);
+      if (txHashMatch != null) {
+        txHash = txHashMatch.group(1)!;
+        // Remove transaction hash from display text
+        displayText = text.replaceAll(RegExp(r'\nTransaction Hash: 0x[a-fA-F0-9]+'), '');
+      } else {
+        txHash = '';
+      }
+      
+      // Extract latest proposal for display
+      String description = displayText;
+      double displayPrice = pricePerUnit ?? 0.0;
+      int displayAmount = totalAmount ?? 0;
+      String displayTradeType = tradeType ?? 'sell';
+      
+      // If there's a current proposal, use its values for display
+      if (currentProposal != null) {
+        displayPrice = currentProposal!['pricePerUnit']?.toDouble() ?? displayPrice;
+        displayAmount = currentProposal!['totalAmount'] ?? displayAmount;
+        displayTradeType = currentProposal!['tradeType'] ?? displayTradeType;
+      }
+      
+      // Add negotiation info to description if in negotiation
+      if (status == 'negotiating' && negotiationHistory != null && negotiationHistory!.isNotEmpty) {
+        final latestAction = negotiationHistory!.last;
+        final actionUser = latestAction['userId'] ?? '';
+        final actionType = latestAction['action'] ?? '';
+        
+        if (actionType == 'counter') {
+          description = "$actionUser has countered this offer.";
+          if (displayText.isNotEmpty && displayText != description) {
+            description += " Message: $displayText";
+          }
+        }
+      }
+      
       return ChatMessage(
-        text: text,
+        text: displayText,
         isUser: isCurrentUserSender,
         time: timestamp,
         type: MessageType.offer,
         offer: TradeOffer(
-          item: tradeType == 'sell' ? 'Energy Credits Offer' : 'Energy Credits Request',
-          amount: '$totalAmount kWh',
-          description: 'Price: \$${pricePerUnit?.toStringAsFixed(2)} per kWh',
-          isPending: status == 'pending',
+          messageId: messageId,
+          item: displayTradeType == 'sell' ? 'Energy Credits Offer' : 'Energy Credits Request',
+          amount: '$displayAmount kWh',
+          description: description,
+          isPending: status == 'pending' || status == 'negotiating',
           status: status ?? 'pending',
-          pricePerUnit: pricePerUnit ?? 0.0,
-          totalAmount: totalAmount ?? 0,
+          pricePerUnit: displayPrice,
+          totalAmount: displayAmount,
           startTime: startTime ?? DateTime.now(),
-          tradeType: tradeType ?? 'sell',
+          tradeType: displayTradeType,
+          isNegotiating: status == 'negotiating',
+          latestProposal: currentProposal,
+          transactionHash: txHash,
         ),
       );
     } else {

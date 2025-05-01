@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../Services/blockchain_service.dart';
 import '../Services/cognito_service.dart';
 import '../Services/metamask.dart';
 import '../Services/theme_provider.dart';
 import '../Widgets/animated_background.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 
 import '../Widgets/animated_background_light.dart';
 
@@ -26,8 +29,12 @@ class _TransactionPageState extends State<TransactionPage> {
   // Filtered offers list
   List<Map<String, dynamic>> _filteredOffers = [];
 
+  // All offers list
+  List<Map<String, dynamic>> _allOffers = [];
+
   // Add these variables to the _TransactionPageState class
   bool _showTransactionHistory = false;
+  bool _isLoading = false; // Variable to track loading state
   final List<Map<String, dynamic>> _transactionHistory = [
     {
       'id': 'TX001',
@@ -61,13 +68,24 @@ class _TransactionPageState extends State<TransactionPage> {
     },
   ];
 
-  // Form values
-  final _formKey = GlobalKey<FormState>();
-  String _offerType = 'Sell';
+  // Form key for validation
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  // Offer creation variables
+  String _offerType = 'Sell'; // Default to sell
   double _energyAmount = 0;
-  double _price = 0;
+  double _price = 0; // Define _price variable
+  double _pricePerUnit = 0;
   String _description = '';
-  
+  DateTime _startDate = DateTime.now().add(const Duration(days: 1));
+  DateTime _endDate = DateTime.now().add(const Duration(days: 7));
+
+  // Instance of blockchain service
+  final BlockchainService _blockchainService = BlockchainService();
+
+  // Loading indicator
+  bool _isCreatingOffer = false;
+
   // Mock data for offers
   final List<Map<String, dynamic>> _offers = [
     {
@@ -130,44 +148,44 @@ class _TransactionPageState extends State<TransactionPage> {
   @override
   void initState() {
     super.initState();
-    // Initialize filtered offers with all offers
-    _filteredOffers = List.from(_offers);
+    _initializeBlockchain();
+    _loadActiveOffers();
+  }
+
+  Future<void> _initializeBlockchain() async {
+    await _blockchainService.initialize();
   }
   
   // Filter offers based on criteria
-  void _applyFilters() {
-    setState(() {
-      _filteredOffers = _offers.where((offer) {
-        // Filter by type
-        if (_filterType != 'All' && offer['type'] != _filterType) {
-          return false;
-        }
+  // void _applyFilters() {
+  //   setState(() {
+  //     _filteredOffers = _offers.where((offer) {
         
-        // Filter by price range
-        if (offer['price'] < _priceRange.start || offer['price'] > _priceRange.end) {
-          return false;
-        }
+  //       // Filter by price range
+  //       if (offer['price'] < _priceRange.start || offer['price'] > _priceRange.end) {
+  //         return false;
+  //       }
         
-        // Filter by amount range
-        if (offer['amount'] < _amountRange.start || offer['amount'] > _amountRange.end) {
-          return false;
-        }
+  //       // Filter by amount range
+  //       if (offer['amount'] < _amountRange.start || offer['amount'] > _amountRange.end) {
+  //         return false;
+  //       }
         
-        // Filter by search query (check user or description)
-        if (_searchQuery.isNotEmpty) {
-          final String description = offer['description'].toString().toLowerCase();
-          final String user = offer['user'].toString().toLowerCase();
-          final String query = _searchQuery.toLowerCase();
+  //       // Filter by search query (check user or description)
+  //       if (_searchQuery.isNotEmpty) {
+  //         final String description = offer['description'].toString().toLowerCase();
+  //         final String user = offer['user'].toString().toLowerCase();
+  //         final String query = _searchQuery.toLowerCase();
           
-          if (!description.contains(query) && !user.contains(query)) {
-            return false;
-          }
-        }
+  //         if (!description.contains(query) && !user.contains(query)) {
+  //           return false;
+  //         }
+  //       }
         
-        return true;
-      }).toList();
-    });
-  }
+  //       return true;
+  //     }).toList();
+  //   });
+  // }
 
   // Check if an offer matches the current filters
   bool _offerMatchesFilters(Map<String, dynamic> offer) {
@@ -288,16 +306,24 @@ class _TransactionPageState extends State<TransactionPage> {
   }
 
   void _showCreateOfferDialog() {
-    // Reset form values
-    _offerType = 'Sell';
-    _energyAmount = 0;
-    _price = 0;
-    _description = '';
-    
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
+  // Reset form values
+  _offerType = 'Sell';
+  _energyAmount = 0;
+  _pricePerUnit = 0;
+  _description = '';
+  _startDate = DateTime.now().add(const Duration(days: 1));
+  _endDate = DateTime.now().add(const Duration(days: 7));
+  
+  // Create controllers for the form fields
+  final TextEditingController amountController = TextEditingController();
+  final TextEditingController priceController = TextEditingController();
+  final TextEditingController descriptionController = TextEditingController();
+  
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return StatefulBuilder(
+        builder: (context, setState) => Dialog(
           backgroundColor: Colors.transparent,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -333,127 +359,277 @@ class _TransactionPageState extends State<TransactionPage> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    
+                    // Offer Type
                     Row(
                       children: [
                         const Text('Offer Type:', style: TextStyle(color: Colors.white)),
                         const SizedBox(width: 16),
-                        StatefulBuilder(
-                          builder: (BuildContext context, StateSetter setState) {
-                            return ToggleButtons(
-                              borderRadius: BorderRadius.circular(8),
-                              selectedColor: Colors.white,
-                              fillColor: const Color(0xFF5C005C),
-                              selectedBorderColor: const Color(0xFF5C005C),
-                              borderColor: Colors.grey,
-                              constraints: const BoxConstraints(minHeight: 40, minWidth: 80),
-                              isSelected: [_offerType == 'Sell', _offerType == 'Buy'],
-                              onPressed: (index) {
-                                setState(() {
-                                  _offerType = index == 0 ? 'Sell' : 'Buy';
-                                });
-                              },
-                              children: const [
-                                Text('Sell', style: TextStyle(fontWeight: FontWeight.bold)),
-                                Text('Buy', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ],
-                            );
+                        ToggleButtons(
+                          borderRadius: BorderRadius.circular(8),
+                          selectedColor: Colors.white,
+                          fillColor: const Color(0xFF5C005C),
+                          selectedBorderColor: const Color(0xFF5C005C),
+                          borderColor: Colors.grey,
+                          constraints: const BoxConstraints(minHeight: 40, minWidth: 80),
+                          isSelected: [_offerType == 'Sell', _offerType == 'Buy'],
+                          onPressed: (index) {
+                            setState(() {
+                              _offerType = index == 0 ? 'Sell' : 'Buy';
+                            });
                           },
+                          children: const [
+                            Text('Sell', style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text('Buy', style: TextStyle(fontWeight: FontWeight.bold)),
+                          ],
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _buildEnergyAmountField(),
-                    const SizedBox(height: 16),
-                    _buildPriceField(),
-                    const SizedBox(height: 16),
+                    
+                    // Energy Amount
                     TextFormField(
+                      controller: amountController,
                       decoration: InputDecoration(
-                        labelText: 'Description',
-                        labelStyle: const TextStyle(color: Colors.grey),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
+                        labelText: 'Energy Amount (kWh)',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.purple.shade300),
                         ),
-                        filled: true,
-                        fillColor: Colors.grey.withOpacity(0.1),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.purple.shade800),
+                        ),
                       ),
                       style: const TextStyle(color: Colors.white),
-                      maxLines: 3,
-                      onChanged: (value) {
-                        _description = value;
-                      },
+                      keyboardType: TextInputType.number,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Please enter a description';
+                          return 'Please enter an amount';
+                        }
+                        final amount = double.tryParse(value);
+                        if (amount == null || amount <= 0) {
+                          return 'Amount must be greater than 0';
                         }
                         return null;
                       },
+                      onSaved: (value) {
+                        _energyAmount = double.parse(value!);
+                      },
                     ),
+                    const SizedBox(height: 16),
+                    
+                    // Price per Unit
+                    TextFormField(
+                      controller: priceController,
+                      decoration: InputDecoration(
+                        labelText: 'Price per kWh (tokens)',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.purple.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.purple.shade800),
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter a price';
+                        }
+                        final price = double.tryParse(value);
+                        if (price == null || price <= 0) {
+                          return 'Price must be greater than 0';
+                        }
+                        return null;
+                      },
+                      onSaved: (value) {
+                        _pricePerUnit = double.parse(value!);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Description
+                    TextFormField(
+                      controller: descriptionController,
+                      decoration: InputDecoration(
+                        labelText: 'Description (optional)',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.purple.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.purple.shade800),
+                        ),
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                      maxLines: 2,
+                      onSaved: (value) {
+                        _description = value ?? '';
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Date Range
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Start Date', style: TextStyle(color: Colors.white70)),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () async {
+                                  final DateTime? pickedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: _startDate,
+                                    firstDate: DateTime.now(),
+                                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                                    builder: (context, child) {
+                                      return Theme(
+                                        data: Theme.of(context).copyWith(
+                                          colorScheme: ColorScheme.dark(
+                                            primary: Colors.purple.shade300,
+                                            onPrimary: Colors.white,
+                                            surface: const Color(0xFF2A0030),
+                                            onSurface: Colors.white,
+                                          ),
+                                        ),
+                                        child: child!,
+                                      );
+                                    },
+                                  );
+                                  
+                                  if (pickedDate != null) {
+                                    setState(() {
+                                      _startDate = pickedDate;
+                                      // Ensure end date is after start date
+                                      if (_endDate.isBefore(_startDate)) {
+                                        _endDate = _startDate.add(const Duration(days: 1));
+                                      }
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.purple.shade800),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        DateFormat('MMM dd, yyyy').format(_startDate),
+                                        style: const TextStyle(color: Colors.white),
+                                      ),
+                                      const Icon(Icons.calendar_today, color: Colors.white70, size: 16),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('End Date', style: TextStyle(color: Colors.white70)),
+                              const SizedBox(height: 8),
+                              InkWell(
+                                onTap: () async {
+                                  final DateTime? pickedDate = await showDatePicker(
+                                    context: context,
+                                    initialDate: _endDate,
+                                    firstDate: _startDate,
+                                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                                    builder: (context, child) {
+                                      return Theme(
+                                        data: Theme.of(context).copyWith(
+                                          colorScheme: ColorScheme.dark(
+                                            primary: Colors.purple.shade300,
+                                            onPrimary: Colors.white,
+                                            surface: const Color(0xFF2A0030),
+                                            onSurface: Colors.white,
+                                          ),
+                                        ),
+                                        child: child!,
+                                      );
+                                    },
+                                  );
+                                  
+                                  if (pickedDate != null) {
+                                    setState(() {
+                                      _endDate = pickedDate;
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.purple.shade800),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        DateFormat('MMM dd, yyyy').format(_endDate),
+                                        style: const TextStyle(color: Colors.white),
+                                      ),
+                                      const Icon(Icons.calendar_today, color: Colors.white70, size: 16),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    // Total Price Display
+                    if (amountController.text.isNotEmpty && priceController.text.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: Text(
+                          'Total: ${(double.tryParse(amountController.text) ?? 0) * (double.tryParse(priceController.text) ?? 0)} tokens',
+                          style: TextStyle(color: Colors.purple.shade300, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      
                     const SizedBox(height: 24),
+                    
+                    // Actions
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.white70,
-                          ),
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
+                          child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
                         ),
                         const SizedBox(width: 16),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF5C005C),
+                            backgroundColor: Colors.purple.shade700,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
                           ),
-                          onPressed: () {
-                            if (_formKey.currentState!.validate()) {
-                              // Create new offer
-                              final newOffer = {
-                                'id': (_offers.length + 1).toString(),
-                                'type': _offerType,
-                                'amount': _energyAmount,
-                                'price': _price,
-                                'pricePerUnit': _price / _energyAmount,
-                                'user': '0x7a3B...F42c', // Current user address
-                                'timestamp': DateTime.now(),
-                                'description': _description,
-                                'status': 'Active',
-                              };
-                              
-                              setState(() {
-                                // Add to base offers list
-                                _offers.insert(0, newOffer);
-                                
-                                // Check if it matches current filters before adding to filtered list
-                                if (_offerMatchesFilters(newOffer)) {
-                                  _filteredOffers.insert(0, newOffer);
-                                }
-                              });
-                              
-                              // Close dialog
-                              Navigator.pop(context);
-                              
-                              // Show success notification
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Offer created successfully'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            }
-                          },
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.add),
-                              SizedBox(width: 8),
-                              Text('Create Offer'),
-                            ],
-                          ),
+                          onPressed: _isCreatingOffer 
+                              ? null 
+                              : () => _createOffer(context),
+                          child: _isCreatingOffer
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Create Offer'),
                         ),
                       ],
                     ),
@@ -462,11 +638,111 @@ class _TransactionPageState extends State<TransactionPage> {
               ),
             ),
           ),
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
+}
+
+  Future<void> _createOffer(BuildContext dialogContext) async {
+  // Check form validity
+  if (_formKey.currentState?.validate() != true) {
+    return;
   }
   
+  // Save form values
+  _formKey.currentState?.save();
+  
+  setState(() {
+    _isCreatingOffer = true;
+  });
+  
+  try {
+    // Get the MetaMask provider
+    final provider = Provider.of<MetaMaskProvider>(context, listen: false);
+    
+    // Check if wallet is connected
+    if (!provider.isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please connect your wallet first')),
+      );
+      setState(() {
+        _isCreatingOffer = false;
+      });
+      return;
+    }
+
+    // Check if on correct network
+    if (provider.currentChain != '0x4268') { // Holesky
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please switch to Holesky testnet')),
+      );
+      
+      // Attempt to switch networks
+      await provider.switchChain();
+      
+      setState(() {
+        _isCreatingOffer = false;
+      });
+      return;
+    }
+    
+    final txHash = await _blockchainService.createEnergyOffer(
+      context: context,
+      amount: _energyAmount,
+      pricePerUnit: _pricePerUnit,
+      startTime: _startDate,
+      endTime: _endDate,
+      isSelling: _offerType == 'Sell',
+    );
+    
+    setState(() {
+      _isCreatingOffer = false;
+    });
+    
+    // Close the dialog
+    Navigator.pop(dialogContext);
+    
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Offer created successfully! Transaction: ${txHash.substring(0, 10)}...'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: Colors.white,
+          onPressed: () {
+            final url = 'https://holesky.etherscan.io/tx/$txHash';
+            launch(url);
+          },
+        ),
+      ),
+    );
+    
+  } catch (e) {
+    setState(() {
+      _isCreatingOffer = false;
+    });
+    
+    String errorMessage = e.toString();
+    // Clean up error message for display
+    if (errorMessage.contains('execution reverted')) {
+      errorMessage = 'Transaction rejected by the blockchain. Check your parameters.';
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error creating offer: $errorMessage'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+    
+    debugPrint('Detailed error creating offer: $e');
+  }
+}
+
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
       leading: Builder(
@@ -500,6 +776,16 @@ class _TransactionPageState extends State<TransactionPage> {
               Navigator.pushReplacementNamed(context, '/signin');
             }
           },
+        ),
+        ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.purple.shade800,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+          onPressed: _showCreateOfferDialog,
+          icon: const Icon(Icons.add),
+          label: const Text('Create Offer'),
         ),
       ],
     );
@@ -1537,8 +1823,10 @@ Color _getStatusColor(String status) {
 }
   
   DataRow _buildOfferRow(Map<String, dynamic> offer) {
-  final isSellType = offer['type'] == 'Sell';
-  final formattedTime = _formatTimestamp(offer['timestamp']);
+  // Change from 'type' to 'offerType'
+  final isSellType = offer['offerType'] == 'Sell';
+  // Change from 'timestamp' to 'createdAt'
+  final formattedTime = _formatTimestamp(offer['createdAt']);
   
   return DataRow(
     cells: [
@@ -1550,7 +1838,7 @@ Color _getStatusColor(String status) {
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
-            offer['type'],
+            offer['offerType'], // Changed from 'type'
             style: TextStyle(
               color: isSellType ? Colors.green : Colors.blue,
               fontWeight: FontWeight.bold,
@@ -1560,7 +1848,7 @@ Color _getStatusColor(String status) {
       ),
       DataCell(
         Text(
-          '${offer['amount'].toStringAsFixed(1)}',
+          '${offer['energyAmount'].toStringAsFixed(1)}', // Changed from 'amount'
           style: const TextStyle(color: Colors.white),
         ),
       ),
@@ -1693,8 +1981,8 @@ Color _getStatusColor(String status) {
     itemCount: _filteredOffers.length,
     itemBuilder: (context, index) {
       final offer = _filteredOffers[index];
-      final isSellType = offer['type'] == 'Sell';
-      final formattedTime = _formatTimestamp(offer['timestamp']);
+      final isSellType = offer['offerType'] == 'Sell'; // Changed from 'type'
+      final formattedTime = _formatTimestamp(offer['createdAt']); // Changed from 'timestamp'
       
       return Card(
         margin: const EdgeInsets.only(bottom: 12),
@@ -1715,7 +2003,7 @@ Color _getStatusColor(String status) {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
-                      offer['type'],
+                      offer['offerType'], // Changed from 'type'
                       style: TextStyle(
                         color: isSellType ? Colors.green : Colors.blue,
                         fontWeight: FontWeight.bold,
@@ -1723,7 +2011,7 @@ Color _getStatusColor(String status) {
                     ),
                   ),
                   Text(
-                    formattedTime,
+                    formattedTime, // Changed from 'timestamp'
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
@@ -1734,7 +2022,7 @@ Color _getStatusColor(String status) {
                   const Icon(Icons.bolt, color: Colors.yellow, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    '${offer['amount'].toStringAsFixed(1)} kWh',
+                    '${offer['energyAmount'].toStringAsFixed(1)} kWh', // Changed from 'amount'
                     style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -1836,20 +2124,120 @@ Color _getStatusColor(String status) {
   );
 }
   
-  String _formatTimestamp(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
+  String _formatTimestamp(DateTime? timestamp) {
+  if (timestamp == null) {
+    return 'N/A'; // Return a placeholder for null timestamps
+  }
+  
+  final now = DateTime.now();
+  final difference = now.difference(timestamp);
+  
+  if (difference.inSeconds < 60) {
+    return 'Just now';
+  } else if (difference.inMinutes < 60) {
+    return '${difference.inMinutes} min ago';
+  } else if (difference.inHours < 24) {
+    return '${difference.inHours} hours ago';
+  } else if (difference.inDays < 7) {
+    return '${difference.inDays} days ago';
+  } else {
+    return DateFormat('MMM d, yyyy').format(timestamp);
+  }
+}
+
+  Future<void> _loadActiveOffers() async {
+  setState(() {
+    _isLoading = true;
+  });
+  
+  try {
+    // This would be replaced with actual blockchain call to get active offers
+    // For now, we'll use mock data or you can implement the actual blockchain call
+    // Example:
+    // final offers = await _blockchainService.getActiveOffers(context);
     
-    if (difference.inSeconds < 60) {
-      return 'Just now';
-    } else if (difference.inMinutes < 60) {
-      return '${difference.inMinutes} min ago';
-    } else if (difference.inHours < 24) {
-      return '${difference.inHours} hours ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays} days ago';
-    } else {
-      return DateFormat('MMM d, yyyy').format(timestamp);
+    // Mock data for testing
+    await Future.delayed(const Duration(seconds: 1));
+    final now = DateTime.now();
+    
+    final List<Map<String, dynamic>> offers = [
+      {
+        'id': '0x123456789abcdef',
+        'offerType': 'Sell',
+        'type': 'Sell', // Add this for backward compatibility
+        'energyAmount': 100,
+        'amount': 100, // Add this for backward compatibility
+        'pricePerUnit': 15.5,
+        'price': 1550.0, // Add this - total price
+        'totalPrice': 1550,
+        'description': 'Clean solar energy available',
+        'startTime': now.add(const Duration(days: 1)),
+        'endTime': now.add(const Duration(days: 30)),
+        'creator': '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
+        'creatorUsername': 'EnergyTrader1',
+        'user': 'EnergyTrader1', // Add this for backward compatibility
+        'status': 'Active',
+        'createdAt': now.subtract(const Duration(hours: 5)),
+        'timestamp': now.subtract(const Duration(hours: 5)), // Add this for backward compatibility
+      },
+      // Add more mock offers as needed
+    ];
+    
+    setState(() {
+      _allOffers = offers;
+      _applyFilters(); // Apply any active filters
+      _isLoading = false;
+    });
+    
+  } catch (e) {
+    setState(() {
+      _isLoading = false;
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error loading offers: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    
+    if (kDebugMode) {
+      print('Error loading offers: $e');
     }
   }
+}
+
+void _applyFilters() {
+  // Start with all offers
+  List<Map<String, dynamic>> filtered = List.from(_allOffers);
+  
+  // Apply search query filter
+  if (_searchQuery.isNotEmpty) {
+    filtered = filtered.where((offer) {
+      return offer['creatorUsername'].toString().toLowerCase().contains(_searchQuery.toLowerCase()) ||
+             offer['id'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+  }
+  
+  // Apply offer type filter
+  if (_filterType != 'All') {
+    filtered = filtered.where((offer) => offer['offerType'] == _filterType).toList();
+  }
+  
+  // Apply price range filter
+  filtered = filtered.where((offer) {
+    final price = offer['pricePerUnit'] as double;
+    return price >= _priceRange.start && price <= _priceRange.end;
+  }).toList();
+  
+  // Apply amount range filter
+  filtered = filtered.where((offer) {
+    final amount = offer['energyAmount'] as int;
+    return amount >= _amountRange.start && amount <= _amountRange.end;
+  }).toList();
+  
+  setState(() {
+    _filteredOffers = filtered;
+  });
+}
 }
