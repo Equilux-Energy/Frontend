@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -12,10 +11,9 @@ import 'package:provider/provider.dart';
 import 'package:test_web/Services/cognito_service.dart';
 import '../Services/blockchain_service.dart';
 import '../Models/energy_offer.dart';
-
-import '../Services/metamask.dart';
 import '../Services/theme_provider.dart';
 import '../Services/user_service.dart';
+import 'dart:js_util';
 
 enum MessageType { text, offer }
 
@@ -113,6 +111,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _nextPageToken;
   final BlockchainService _blockchainService = BlockchainService();
   bool _isWalletConnected = false;
+  String? _currentWalletAddress;
+  int? _currentChainId;
   
   List<ChatMessage> _messages = [];
   List<ChatUser> _users = [];
@@ -135,20 +135,39 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _checkWalletConnection();
+    _initializeBlockchain();
     _fetchRecentConversations();
     
     // Add page visibility listener for more efficient polling
     WidgetsBinding.instance.addObserver(this);
   }
   
-  Future<void> _checkWalletConnection() async {
-    await _blockchainService.initialize();
-    setState(() {
-      _isWalletConnected = _blockchainService.isWalletConnected(context);
-    });
+  Future<void> _initializeBlockchain() async {
+    try {
+      await _blockchainService.initialize();
+      
+      // Setup listener for blockchain connection changes
+      _blockchainService.addListener(_onBlockchainStateChanged);
+      
+      setState(() {
+        _isWalletConnected = _blockchainService.isConnected;
+        _currentWalletAddress = _blockchainService.currentAddress;
+        _currentChainId = _blockchainService.currentChainId;
+      });
+    } catch (e) {
+      print('Error initializing blockchain: $e');
+    }
   }
 
+  void _onBlockchainStateChanged() {
+    // Update state when blockchain service notifies changes
+    setState(() {
+      _isWalletConnected = _blockchainService.isConnected;
+      _currentWalletAddress = _blockchainService.currentAddress;
+      _currentChainId = _blockchainService.currentChainId;
+    });
+  }
+  
   Future<void> _fetchRecentConversations() async {
     setState(() {
       _isLoadingConversations = true;
@@ -1123,6 +1142,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _blockchainService.removeListener(_onBlockchainStateChanged);
     _stopMessageRefresh();
     _messageController.dispose();
     _scrollController.dispose();
@@ -1206,248 +1226,279 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
   
   void _showNewOfferDialog() {
-  final amountController = TextEditingController();
-  final priceController = TextEditingController();
-  final descriptionController = TextEditingController();
-  DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
-  String tradeType = 'sell'; // Default to sell
-
-  showDialog(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        backgroundColor: const Color(0xFF2A0030),
-        title: const Text('Create Trade Offer', style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Trade type selector
-              const Text('Trade Type:', style: TextStyle(color: Colors.white70)),
-              Row(
-                children: [
-                  Radio<String>(
-                    value: 'sell',
-                    groupValue: tradeType,
-                    onChanged: (value) {
-                      setDialogState(() {
-                        tradeType = value!;
-                      });
-                    },
-                    fillColor: MaterialStateProperty.all(Colors.white70),
-                  ),
-                  const Text('Sell', style: TextStyle(color: Colors.white)),
-                  const SizedBox(width: 20),
-                  Radio<String>(
-                    value: 'buy',
-                    groupValue: tradeType,
-                    onChanged: (value) {
-                      setDialogState(() {
-                        tradeType = value!;
-                      });
-                    },
-                    fillColor: MaterialStateProperty.all(Colors.white70),
-                  ),
-                  const Text('Buy', style: TextStyle(color: Colors.white)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountController,
-                decoration: const InputDecoration(
-                  labelText: 'Amount (kWh)',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white30),
-                  ),
-                ),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-              ),
-              
-              const SizedBox(height: 16),
-              TextField(
-                controller: priceController,
-                decoration: const InputDecoration(
-                  labelText: 'Price per kWh (\$)',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white30),
-                  ),
-                ),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-              ),
-              
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Start Date: ', style: TextStyle(color: Colors.white70)),
-                  TextButton(
-                    onPressed: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDate,
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                        builder: (context, child) {
-                          return Theme(
-                            data: ThemeData.dark().copyWith(
-                              colorScheme: const ColorScheme.dark(
-                                primary: Colors.purple,
-                                onPrimary: Colors.white,
-                                surface: Color(0xFF2A0030),
-                                onSurface: Colors.white,
-                              ),
-                            ),
-                            child: child!,
-                          );
-                        },
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          selectedDate = picked;
+    final amountController = TextEditingController();
+    final priceController = TextEditingController();
+    final descriptionController = TextEditingController();
+    DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
+    String tradeType = 'sell'; // Default to sell
+  
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF2A0030),
+          title: const Text('Create Trade Offer', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Trade type selector
+                const Text('Trade Type:', style: TextStyle(color: Colors.white70)),
+                Row(
+                  children: [
+                    Radio<String>(
+                      value: 'sell',
+                      groupValue: tradeType,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          tradeType = value!;
                         });
-                      }
-                    },
-                    child: Text(
-                      DateFormat('MMM d, yyyy').format(selectedDate),
-                      style: const TextStyle(color: Colors.purpleAccent),
+                      },
+                      fillColor: MaterialStateProperty.all(Colors.white70),
+                    ),
+                    const Text('Sell', style: TextStyle(color: Colors.white)),
+                    const SizedBox(width: 20),
+                    Radio<String>(
+                      value: 'buy',
+                      groupValue: tradeType,
+                      onChanged: (value) {
+                        setDialogState(() {
+                          tradeType = value!;
+                        });
+                      },
+                      fillColor: MaterialStateProperty.all(Colors.white70),
+                    ),
+                    const Text('Buy', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: amountController,
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (kWh)',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
                     ),
                   ),
-                ],
-              ),
-              
-              const SizedBox(height: 16),
-              TextField(
-                controller: descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Description',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white30),
-                  ),
+                  style: const TextStyle(color: Colors.white),
+                  keyboardType: TextInputType.number,
                 ),
-                style: const TextStyle(color: Colors.white),
-                maxLines: 3,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple.shade700,
-            ),
-            onPressed: () async {
-              if (amountController.text.isEmpty || priceController.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please fill all required fields')),
-                );
-                return;
-              }
-              
-              try {
-                // Convert inputs to correct types
-                final amount = int.tryParse(amountController.text);
-                final price = double.tryParse(priceController.text);
                 
-                if (amount == null || price == null) {
+                const SizedBox(height: 16),
+                TextField(
+                  controller: priceController,
+                  decoration: const InputDecoration(
+                    labelText: 'Price per kWh (\$)',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  keyboardType: TextInputType.number,
+                ),
+                
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text('Start Date: ', style: TextStyle(color: Colors.white70)),
+                    TextButton(
+                      onPressed: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          builder: (context, child) {
+                            return Theme(
+                              data: ThemeData.dark().copyWith(
+                                colorScheme: const ColorScheme.dark(
+                                  primary: Colors.purple,
+                                  onPrimary: Colors.white,
+                                  surface: Color(0xFF2A0030),
+                                  onSurface: Colors.white,
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            selectedDate = picked;
+                          });
+                        }
+                      },
+                      child: Text(
+                        DateFormat('MMM d, yyyy').format(selectedDate),
+                        style: const TextStyle(color: Colors.purpleAccent),
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+              onPressed: () => Navigator.pop(context),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple.shade700,
+              ),
+              onPressed: () async {
+                if (amountController.text.isEmpty || priceController.text.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter valid numbers')),
+                    const SnackBar(content: Text('Please fill all required fields')),
                   );
                   return;
                 }
                 
-                final messageText = descriptionController.text.isNotEmpty 
-                    ? descriptionController.text 
-                    : tradeType == 'sell' 
-                        ? 'Offering $amount kWh at \$$price per kWh'
-                        : 'Looking to buy $amount kWh at \$$price per kWh';
-                debugPrint('Sending message: $messageText');
-                // Close dialog BEFORE any async operations
-                Navigator.pop(dialogContext);
-                
-                // Show loading indicator using the parent widget's setState
-                setState(() {
-                  _isLoadingMessages = true;
-                });
-                
-                // Create offer on blockchain
-                final txHash = await _blockchainService.createEnergyOffer(
-                  context: context,
-                  amount: amount.toDouble(),
-                  pricePerUnit: price,
-                  startTime: selectedDate,
-                  endTime: selectedDate.add(const Duration(days: 30)), // Example: 30 days from startTime
-                  isSelling: tradeType == 'sell'
-                );
-                
-                // Now send the message through Cognito
-                final cognitoService = CognitoService();
-                final message = await cognitoService.sendTradeOffer(
-                  recipientUsername: _currentChatUser!.username,
-                  text: "$messageText\nTransaction Hash: $txHash",
-                  pricePerUnit: price,
-                  startTime: selectedDate,
-                  totalAmount: amount,
-                  tradeType: tradeType,
-                );
-                
-                // Get current user ID for the message conversion
-                final userData = await cognitoService.getUserInfo();
-                final currentUserId = userData?['cognito:username'] ?? '';
-                
-                // Check if widget is still mounted before calling setState
-                if (mounted) {
-                  setState(() {
-                    _isLoadingMessages = false;
-                    _messages.add(message.toChatMessage(currentUserId));
-                    
-                    // Update conversation with trade offer
-                    _updateConversationWithLatestMessage(
-                      username: _currentChatUser!.username,
-                      lastMessage: messageText,
-                      timestamp: DateTime.now(),
-                      isTradeOffer: true
+                try {
+                  // Convert inputs to correct types
+                  final amount = int.tryParse(amountController.text);
+                  final price = double.tryParse(priceController.text);
+                  
+                  if (amount == null || price == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter valid numbers')),
                     );
+                    return;
+                  }
+                  
+                  final messageText = descriptionController.text.isNotEmpty 
+                      ? descriptionController.text 
+                      : tradeType == 'sell' 
+                          ? 'Offering $amount kWh at \$$price per kWh'
+                          : 'Looking to buy $amount kWh at \$$price per kWh';
+                  debugPrint('Sending message: $messageText');
+                  // Close dialog BEFORE any async operations
+                  Navigator.pop(dialogContext);
+                  
+                  // Show loading indicator
+                  setState(() {
+                    _isLoadingMessages = true;
                   });
                   
-                  // Auto-scroll to the bottom
-                  Future.delayed(const Duration(milliseconds: 100), () {
-                    if (_scrollController.hasClients) {
-                      _scrollController.animateTo(
-                        _scrollController.position.maxScrollExtent,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
-                      );
-                    }
-                  });
-                }
-              } catch (e) {
-                // Check if widget is still mounted before calling setState
-                if (mounted) {
-                  setState(() {
-                    _isLoadingMessages = false;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error sending offer: $e')),
+                  // Check if wallet is connected
+                  if (!_isWalletConnected) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please connect your wallet first')),
+                    );
+                    setState(() {
+                      _isLoadingMessages = false;
+                    });
+                    return;
+                  }
+
+                  // Check if on correct network (Holesky testnet has chain ID 17000)
+                  if (_currentChainId != 17000) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please switch to Holesky testnet')),
+                    );
+                    
+                    // Attempt to switch networks
+                    await _switchNetwork(17000);
+                    
+                    setState(() {
+                      _isLoadingMessages = false;
+                    });
+                    return;
+                  }
+                  
+                  // Create blockchain transaction with BigInt values
+                  final energyAmountBigInt = BigInt.from(amount * 1e18);
+                  final pricePerUnitBigInt = BigInt.from(price * 1e18);
+                  
+                  String txHash;
+                  if (tradeType == 'sell') {
+                    txHash = await _blockchainService.listEnergyForSale(
+                      energyAmountBigInt, 
+                      pricePerUnitBigInt
+                    );
+                  } else {
+                    // Not implemented yet
+                    throw Exception('Buy offers not yet implemented in blockchain service');
+                  }
+                  
+                  // Now send the message through Cognito
+                  final cognitoService = CognitoService();
+                  final message = await cognitoService.sendTradeOffer(
+                    recipientUsername: _currentChatUser!.username,
+                    text: "$messageText\nTransaction Hash: $txHash",
+                    pricePerUnit: price,
+                    startTime: selectedDate,
+                    totalAmount: amount,
+                    tradeType: tradeType,
                   );
+                  
+                  // Get current user ID for the message conversion
+                  final userData = await cognitoService.getUserInfo();
+                  final currentUserId = userData?['cognito:username'] ?? '';
+                  
+                  // Check if widget is still mounted before calling setState
+                  if (mounted) {
+                    setState(() {
+                      _isLoadingMessages = false;
+                      _messages.add(message.toChatMessage(currentUserId));
+                      
+                      // Update conversation with trade offer
+                      _updateConversationWithLatestMessage(
+                        username: _currentChatUser!.username,
+                        lastMessage: messageText,
+                        timestamp: DateTime.now(),
+                        isTradeOffer: true
+                      );
+                    });
+                    
+                    // Auto-scroll to the bottom
+                    Future.delayed(const Duration(milliseconds: 100), () {
+                      if (_scrollController.hasClients) {
+                        _scrollController.animateTo(
+                          _scrollController.position.maxScrollExtent,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      }
+                    });
+                  }
+                } catch (e) {
+                  // Check if widget is still mounted before calling setState
+                  if (mounted) {
+                    setState(() {
+                      _isLoadingMessages = false;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error sending offer: $e')),
+                    );
+                  }
                 }
-              }
-            },
-            child: const Text('Send Offer'),
-          ),
-        ],
+              },
+              child: const Text('Send Offer'),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
   
   Widget _buildSidebar(BuildContext context) {
     return Container(
@@ -1601,336 +1652,343 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 }
 
 Future<void> _respondToOffer(String messageId, String response) async {
-  // Show loading indicator
-  setState(() {
-    _isLoadingMessages = true;
-  });
-  
-  try {
-    // Check if wallet is connected (for UI only)
-    final walletConnected = context.read<MetaMaskProvider>().isConnected;
-    if (!walletConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please connect your wallet first')),
+    // Show loading indicator
+    setState(() {
+      _isLoadingMessages = true;
+    });
+    
+    try {
+      // Check if wallet is connected
+      if (!_isWalletConnected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please connect your wallet first')),
+        );
+        setState(() {
+          _isLoadingMessages = false;
+        });
+        return;
+      }
+      
+      // Use Cognito API for the actual response
+      final cognitoService = CognitoService();
+      final updatedMessage = await cognitoService.respondToTradeOffer(
+        messageId: messageId,
+        response: response,
       );
+      
+      // Now refresh messages to show updated status
+      await _loadMessageHistory(_currentChatUser!.username);
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            response == 'accept' 
+                ? 'Offer accepted successfully!'
+                : 'Offer declined',
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: response == 'accept' ? Colors.green : Colors.red,
+        ),
+      );
+    } catch (e) {
       setState(() {
         _isLoadingMessages = false;
       });
-      return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
     }
-    
-    // Use Cognito API for the actual response
-    final cognitoService = CognitoService();
-    final updatedMessage = await cognitoService.respondToTradeOffer(
-      messageId: messageId,
-      response: response,
-    );
-    
-    // Now refresh messages to show updated status
-    await _loadMessageHistory(_currentChatUser!.username);
-    
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          response == 'accept' 
-              ? 'Offer accepted successfully!'
-              : 'Offer declined',
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: response == 'accept' ? Colors.green : Colors.red,
-      ),
-    );
-  } catch (e) {
-    setState(() {
-      _isLoadingMessages = false;
-    });
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error: $e')),
-    );
   }
-}
 
 void _showCounterOfferDialog(TradeOffer originalOffer) {
-  // Pre-populate with original values but allow adjustments
-  final amountController = TextEditingController(text: originalOffer.totalAmount.toString());
-  final priceController = TextEditingController(text: originalOffer.pricePerUnit.toStringAsFixed(2));
-  final descriptionController = TextEditingController(text: 'Here is my counter offer');
-  
-  // Use original start time but allow changing
-  DateTime selectedDate = originalOffer.startTime;
-  
-  showDialog(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        backgroundColor: const Color(0xFF2A0030),
-        title: const Text('Counter Offer', style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Note about counter offer
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.withOpacity(0.5)),
-                ),
-                child: const Text(
-                  'Propose new price or quantity for this trade.',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Trade type information (read-only in counter offer)
-              const Text('Trade Type:', style: TextStyle(color: Colors.white70)),
-              Text(
-                originalOffer.tradeType == 'sell' ? 'Selling Energy' : 'Buying Energy',
-                style: TextStyle(
-                  color: originalOffer.tradeType == 'sell' ? Colors.green : Colors.blue,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              
-              const SizedBox(height: 16),
-              TextField(
-                controller: amountController,
-                decoration: const InputDecoration(
-                  labelText: 'Amount (kWh)',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white30),
+    // Pre-populate with original values but allow adjustments
+    final amountController = TextEditingController(text: originalOffer.totalAmount.toString());
+    final priceController = TextEditingController(text: originalOffer.pricePerUnit.toStringAsFixed(2));
+    final descriptionController = TextEditingController(text: 'Here is my counter offer');
+    
+    // Use original start time but allow changing
+    DateTime selectedDate = originalOffer.startTime;
+    
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF2A0030),
+          title: const Text('Counter Offer', style: TextStyle(color: Colors.white)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Note about counter offer
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                  ),
+                  child: const Text(
+                    'Propose new price or quantity for this trade.',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                 ),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-              ),
-              
-              const SizedBox(height: 16),
-              TextField(
-                controller: priceController,
-                decoration: const InputDecoration(
-                  labelText: 'Price per kWh (\$)',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white30),
+                const SizedBox(height: 16),
+                
+                // Trade type information (read-only in counter offer)
+                const Text('Trade Type:', style: TextStyle(color: Colors.white70)),
+                Text(
+                  originalOffer.tradeType == 'sell' ? 'Selling Energy' : 'Buying Energy',
+                  style: TextStyle(
+                    color: originalOffer.tradeType == 'sell' ? Colors.green : Colors.blue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
                 ),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-              ),
-              
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Start Date: ', style: TextStyle(color: Colors.white70)),
-                  TextButton(
-                    onPressed: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDate,
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                        builder: (context, child) {
-                          return Theme(
-                            data: ThemeData.dark().copyWith(
-                              colorScheme: const ColorScheme.dark(
-                                primary: Colors.purple,
-                                onPrimary: Colors.white,
-                                surface: Color(0xFF2A0030),
-                                onSurface: Colors.white,
+                
+                const SizedBox(height: 16),
+                TextField(
+                  controller: amountController,
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (kWh)',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  keyboardType: TextInputType.number,
+                ),
+                
+                const SizedBox(height: 16),
+                TextField(
+                  controller: priceController,
+                  decoration: const InputDecoration(
+                    labelText: 'Price per kWh (\$)',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
+                    ),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  keyboardType: TextInputType.number,
+                ),
+                
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Text('Start Date: ', style: TextStyle(color: Colors.white70)),
+                    TextButton(
+                      onPressed: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          builder: (context, child) {
+                            return Theme(
+                              data: ThemeData.dark().copyWith(
+                                colorScheme: const ColorScheme.dark(
+                                  primary: Colors.purple,
+                                  onPrimary: Colors.white,
+                                  surface: Color(0xFF2A0030),
+                                  onSurface: Colors.white,
+                                ),
                               ),
-                            ),
-                            child: child!,
-                          );
-                        },
-                      );
-                      if (picked != null) {
-                        setDialogState(() {
-                          selectedDate = picked;
-                        });
-                      }
-                    },
-                    child: Text(
-                      DateFormat('MMM d, yyyy').format(selectedDate),
-                      style: const TextStyle(color: Colors.purpleAccent),
+                              child: child!,
+                            );
+                          },
+                        );
+                        if (picked != null) {
+                          setDialogState(() {
+                            selectedDate = picked;
+                          });
+                        }
+                      },
+                      child: Text(
+                        DateFormat('MMM d, yyyy').format(selectedDate),
+                        style: const TextStyle(color: Colors.purpleAccent),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 16),
-              TextField(
-                controller: descriptionController,
-                decoration: const InputDecoration(
-                  labelText: 'Message',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white30),
-                  ),
+                  ],
                 ),
-                style: const TextStyle(color: Colors.white),
-                maxLines: 2,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
-            onPressed: () => Navigator.pop(context),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue.shade700,
-            ),
-            onPressed: () async {
-              try {
-                // Check if wallet is connected (for UI only)
-                final walletConnected = context.read<MetaMaskProvider>().isConnected;
-                if (!walletConnected) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please connect your wallet first')),
-                  );
-                  return;
-                }
                 
-                // Convert inputs to correct types
-                final amount = int.tryParse(amountController.text);
-                final price = double.tryParse(priceController.text);
-                
-                if (amount == null || price == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please enter valid numbers')),
-                  );
-                  return;
-                }
-                
-                // Close dialog before async operations
-                Navigator.pop(dialogContext);
-                
-                // Show loading indicator
-                setState(() {
-                  _isLoadingMessages = true;
-                });
-                
-                // Update counter offer in Cognito API
-                final cognitoService = CognitoService();
-                await cognitoService.respondToTradeOffer(
-                  messageId: originalOffer.messageId,
-                  response: 'counter',
-                  pricePerUnit: price,
-                  totalAmount: amount,
-                  counterText: descriptionController.text,
-                );
-                
-                // Refresh messages
-                await _loadMessageHistory(_currentChatUser!.username);
-                
-                // Show success message
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Counter offer sent!'),
-                      backgroundColor: Colors.blue,
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descriptionController,
+                  decoration: const InputDecoration(
+                    labelText: 'Message',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white30),
                     ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  setState(() {
-                    _isLoadingMessages = false;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error sending counter offer: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Send Counter Offer'),
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                  maxLines: 2,
+                ),
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+              onPressed: () => Navigator.pop(context),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade700,
+              ),
+              onPressed: () async {
+                try {
+                  // Check if wallet is connected
+                  if (!_isWalletConnected) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please connect your wallet first')),
+                    );
+                    return;
+                  }
+                  
+                  // Convert inputs to correct types
+                  final amount = int.tryParse(amountController.text);
+                  final price = double.tryParse(priceController.text);
+                  
+                  if (amount == null || price == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please enter valid numbers')),
+                    );
+                    return;
+                  }
+                  
+                  // Close dialog before async operations
+                  Navigator.pop(dialogContext);
+                  
+                  // Show loading indicator
+                  setState(() {
+                    _isLoadingMessages = true;
+                  });
+                  
+                  // Update counter offer in Cognito API
+                  final cognitoService = CognitoService();
+                  await cognitoService.respondToTradeOffer(
+                    messageId: originalOffer.messageId,
+                    response: 'counter',
+                    pricePerUnit: price,
+                    totalAmount: amount,
+                    counterText: descriptionController.text,
+                  );
+                  
+                  // Refresh messages
+                  await _loadMessageHistory(_currentChatUser!.username);
+                  
+                  // Show success message
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Counter offer sent!'),
+                        backgroundColor: Colors.blue,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    setState(() {
+                      _isLoadingMessages = false;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error sending counter offer: $e')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Send Counter Offer'),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
 Widget _buildWalletButton() {
-  return Consumer<MetaMaskProvider>(
-    builder: (context, provider, child) {
+    if (_isWalletConnected && _currentWalletAddress != null) {
+      // Connected state
+      String displayAddress = '${_currentWalletAddress!.substring(0, 6)}...${_currentWalletAddress!.substring(_currentWalletAddress!.length - 4)}';
       return ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          backgroundColor: provider.isConnected ? Colors.green.shade800 : Colors.purple.shade800,
+          backgroundColor: Colors.green.shade800,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
-        icon: Icon(
-          provider.isConnected ? Icons.account_balance_wallet : Icons.link,
+        icon: const Icon(
+          Icons.account_balance_wallet,
           color: Colors.white,
         ),
         label: Text(
-          provider.isConnected 
-              ? 'Wallet Connected' 
-              : 'Connect Wallet',
+          displayAddress,
           style: const TextStyle(color: Colors.white),
         ),
-        onPressed: () async {
-          if (provider.isConnected) {
-            // Show wallet details
-            _showWalletDetailsDialog(context, provider);
-          } else {
-            // Connect wallet
-            await provider.connect();
-            // State will update through provider
-          }
+        onPressed: () {
+          // Show wallet details
+          _showWalletDetailsDialog(context);
         },
       );
+    } else {
+      // Disconnected state
+      return ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.purple.shade800,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        ),
+        icon: const Icon(
+          Icons.link,
+          color: Colors.white,
+        ),
+        label: const Text(
+          'Connect Wallet',
+          style: TextStyle(color: Colors.white),
+        ),
+        onPressed: _connectWallet,
+      );
     }
-  );
-}
+  }
 
-void _showWalletDetailsDialog(BuildContext context, MetaMaskProvider provider) {
-  showDialog(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      backgroundColor: const Color(0xFF2A0030),
-      title: const Text('Wallet Details', style: TextStyle(color: Colors.white)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Address: ${provider.currentAddress}',
-            style: const TextStyle(color: Colors.white),
+  void _showWalletDetailsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text('Wallet Details', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Address: ${_currentWalletAddress ?? "Not Connected"}',
+              style: const TextStyle(color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Network ID: ${_currentChainId ?? "Unknown"}',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Switch to Holesky', style: TextStyle(color: Colors.purple)),
+            onPressed: () {
+              Navigator.pop(context);
+              _switchNetwork(17000); // Holesky testnet
+            },
           ),
-          const SizedBox(height: 16),
-          Text(
-            'Balance: ${provider.currentBalance} ETH',
-            style: const TextStyle(color: Colors.white),
+          TextButton(
+            child: const Text('Close', style: TextStyle(color: Colors.white)),
+            onPressed: () => Navigator.pop(context),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          child: const Text('Disconnect', style: TextStyle(color: Colors.red)),
-          onPressed: () {
-            provider.disconnect();
-            Navigator.pop(context);
-          },
-        ),
-        TextButton(
-          child: const Text('Close', style: TextStyle(color: Colors.white)),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ],
-    ),
-  );
-}
+    );
+  }
 
 // Start message polling
 void _startMessagePolling() {
@@ -2187,7 +2245,7 @@ Future<void> _sendTradeOffer({
 }) async {
   try {
     // Check if wallet is connected (for UI only)
-    final walletConnected = context.read<MetaMaskProvider>().isConnected;
+    final walletConnected = _blockchainService.isConnected;
     if (!walletConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please connect your wallet first')),
@@ -2245,5 +2303,82 @@ Future<void> _sendTradeOffer({
       SnackBar(content: Text('Error creating offer: $e')),
     );
   }
+}
+
+// Connect wallet method
+Future<void> _connectWallet() async {
+  try {
+    final success = await _blockchainService.connectWallet();
+    
+    if (success) {
+      setState(() {
+        _isWalletConnected = true;
+        _currentWalletAddress = _blockchainService.currentAddress;
+        _currentChainId = _blockchainService.currentChainId;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wallet connected successfully')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to connect wallet')),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error connecting wallet: $e')),
+    );
+  }
+}
+
+// Network switching method
+Future<void> _switchNetwork(int targetChainId) async {
+  try {
+    final success = await _blockchainService.switchNetwork(targetChainId);
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to switch network')),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error switching network: $e')),
+    );
+  }
+}
+
+// Helper method for creating energy offers on the blockchain
+Future<String> _createBlockchainEnergyOffer({
+  required int amount,
+  required double pricePerUnit,
+  required bool isSelling,
+}) async {
+  // Check wallet connection
+  if (!_isWalletConnected) {
+    throw Exception('Wallet not connected');
+  }
+  
+  // Check network
+  if (_currentChainId != 17000) { // Holesky testnet
+    throw Exception('Please switch to Holesky testnet (ID: 17000)');
+  }
+  
+  // Convert to appropriate format for blockchain (assuming energy amount and price as BigInt with 18 decimals)
+  final energyAmountBigInt = BigInt.from(amount * 1e18);
+  final pricePerUnitBigInt = BigInt.from(pricePerUnit * 1e18);
+  
+  String txHash;
+  if (isSelling) {
+    txHash = await _blockchainService.listEnergyForSale(
+      energyAmountBigInt, 
+      pricePerUnitBigInt
+    );
+  } else {
+    // This would need to be implemented in blockchain_service.dart
+    throw Exception('Buy offers not yet implemented in blockchain service');
+  }
+  
+  return txHash;
 }
 }

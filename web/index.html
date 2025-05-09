@@ -31,6 +31,244 @@
 
   <title>test_web</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Logging utility -->
+  <script>
+    // Simple logging utility
+    window.dappLog = {
+      info: function(message, data) {
+        console.log(`%c[EnergyDapp INFO] ${message}`, 'color: blue; font-weight: bold', data || '');
+      },
+      error: function(message, error) {
+        console.error(`%c[EnergyDapp ERROR] ${message}`, 'color: red; font-weight: bold', error || '');
+      },
+      warning: function(message, data) {
+        console.warn(`%c[EnergyDapp WARNING] ${message}`, 'color: orange; font-weight: bold', data || '');
+      },
+      success: function(message, data) {
+        console.log(`%c[EnergyDapp SUCCESS] ${message}`, 'color: green; font-weight: bold', data || '');
+      }
+    };
+  </script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js" 
+    onload="window.dappLog.success('Ethers.js loaded successfully')" 
+    onerror="window.dappLog.error('Failed to load Ethers.js')" 
+    defer></script>
+  
+  <script defer>
+    // Check if ethers is available when the script runs
+    window.addEventListener('DOMContentLoaded', () => {
+      if (typeof ethers === 'undefined') {
+        window.dappLog.error('Ethers is not defined at DOMContentLoaded');
+      } else {
+        window.dappLog.info('Ethers is available at DOMContentLoaded');
+      }
+    });
+
+    window.energyDapp = {
+      // Check if user has previously connected
+      checkConnectedState: async function() {
+        window.dappLog.info('Checking for existing MetaMask connection');
+        
+        // Check if MetaMask exists
+        if (!window.ethereum) {
+          window.dappLog.warning('MetaMask not available');
+          return null;
+        }
+        
+        try {
+          // This won't prompt, it will just check if already connected
+          const accounts = await window.ethereum.request({
+            method: 'eth_accounts'  // Note: using eth_accounts, not eth_requestAccounts
+          });
+          
+          if (accounts && accounts.length > 0) {
+            const chainId = await window.ethereum.request({
+              method: 'eth_chainId'
+            });
+            
+            const result = {
+              address: accounts[0],
+              chainId: parseInt(chainId, 16)
+            };
+            
+            window.dappLog.success('Existing MetaMask connection found:', result);
+            return result;
+          } else {
+            window.dappLog.info('No existing MetaMask connection found');
+            return null;
+          }
+        } catch (error) {
+          window.dappLog.error('Error checking MetaMask connection state', error);
+          return null;
+        }
+      },
+      
+      // Check if MetaMask is installed
+      isMetaMaskInstalled: function() {
+        const installed = window.ethereum !== undefined;
+        window.dappLog.info('MetaMask installed check:', installed);
+        return installed;
+      },
+      
+      // Connect to MetaMask
+      connect: async function() {
+        window.dappLog.info('Attempting to connect to MetaMask');
+        if (!window.ethereum) {
+          const error = 'MetaMask not available';
+          window.dappLog.error(error);
+          throw new Error(error);
+        }
+        
+        try {
+          const accounts = await window.ethereum.request({ 
+            method: 'eth_requestAccounts' 
+          });
+          
+          const chainId = await window.ethereum.request({
+            method: 'eth_chainId'
+          });
+          
+          const result = {
+            address: accounts[0],
+            chainId: parseInt(chainId, 16)
+          };
+          
+          window.dappLog.success('Connected to MetaMask:', result);
+          return result;
+        } catch (error) {
+          window.dappLog.error('Failed to connect to MetaMask', error);
+          throw error;
+        }
+      },
+      
+      // Get current chain ID
+      getChainId: async function() {
+        window.dappLog.info('Getting chain ID');
+        if (!window.ethereum) {
+          const error = 'MetaMask not available';
+          window.dappLog.error(error);
+          throw new Error(error);
+        }
+        
+        try {
+          const chainId = await window.ethereum.request({
+            method: 'eth_chainId'
+          });
+          
+          const result = parseInt(chainId, 16);
+          window.dappLog.success('Chain ID retrieved:', result);
+          return result;
+        } catch (error) {
+          window.dappLog.error('Failed to get chain ID', error);
+          throw error;
+        }
+      },
+      
+      // Write contract data (transaction)
+      sendContractTransaction: async function(contractAddress, contractAbi, method, args, value) {
+        window.dappLog.info('Sending contract transaction:', {
+          contractAddress,
+          contractAbiInfo: `Type: ${typeof contractAbi}`,
+          method,
+          args,
+          value
+        });
+        if (!window.ethereum) {
+          throw new Error('MetaMask not available');
+        }
+        
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          // Parse ABI if it's a string, or use directly if it's already an object
+          const parsedAbi = typeof contractAbi === 'string' ? JSON.parse(contractAbi) : contractAbi;
+          window.dappLog.info('Creating contract instance', {
+          contractAddress,
+          abiFormat: typeof contractAbi
+          });
+          const contract = new ethers.Contract(contractAddress, parsedAbi, signer);
+          
+          // Add debugging to check if method exists
+          //window.dappLog.info('Available contract methods:', Object.keys(contract.interface.functions));
+          
+          // if (typeof contract[method] !== 'function') {
+          //   throw new Error(`Method ${method} not found on contract`);
+          // }
+          
+          const tx = value 
+            ? await contract[method](...(args || []), { value: value }) 
+            : await contract[method](...(args || []));
+            
+          const receipt = await tx.wait();
+          return tx.hash;
+        } catch (error) {
+          window.dappLog.error('Transaction error:', error);
+          throw error;
+        }
+      },
+
+      callContractFunction: async function(contractAddress, contractAbi, method, args) {
+      window.dappLog.info('Calling contract function:', {
+        contractAddress,
+        contractAbiInfo: `Type: ${typeof contractAbi}`,
+        method,
+        args
+      });
+      if (!window.ethereum) {
+        throw new Error('MetaMask not available');
+      }
+
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        // Parse ABI if it's a string, or use directly if it's already an object
+        const parsedAbi = typeof contractAbi === 'string' ? JSON.parse(contractAbi) : contractAbi;
+        window.dappLog.info('Creating contract instance for read-only call', {
+          contractAddress,
+          abiFormat: typeof contractAbi
+        });
+        const contract = new ethers.Contract(contractAddress, parsedAbi, signer);
+
+        // Add debugging to check if method exists
+        // window.dappLog.info('Available contract methods:', Object.keys(contract.interface.functions));
+
+        // if (typeof contract[method] !== 'function') {
+        //   throw new Error(`Method ${method} not found on contract`);
+        // }
+        const safeArgs = args || [];
+        // Call the contract method
+        console.log('Calling contract method:', method, 'with args:', safeArgs);
+        const result = await contract[method](...safeArgs);
+        console.log('Contract call result:', result);
+        window.dappLog.success('Contract function call successful:', result);
+        return result;
+      } catch (error) {
+        window.dappLog.error('Error calling contract function:', error);
+        throw error;
+      }
+    },
+
+    };
+
+    // Add event listeners for MetaMask
+    if (window.ethereum) {
+      // Listen for account changes
+      window.ethereum.on('accountsChanged', function(accounts) {
+        window.dappLog.info('MetaMask accounts changed:', accounts);
+        // Dispatch a custom event your Flutter app can listen for
+        window.dispatchEvent(new CustomEvent('accountsChanged', { detail: accounts }));
+      });
+      
+      // Listen for chain changes
+      window.ethereum.on('chainChanged', function(chainId) {
+        window.dappLog.info('MetaMask chain changed:', chainId);
+        // Dispatch a custom event your Flutter app can listen for
+        window.dispatchEvent(new CustomEvent('chainChanged', { detail: chainId }));
+      });
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

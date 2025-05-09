@@ -83,7 +83,7 @@ class MetaMaskProvider extends ChangeNotifier {
         }
       }
     } catch (e) {
-      debugPrint('Error initializing MetaMask: $e');
+      debugPrint('Error initializing fuck you MetaMask: $e');
     }
     
     notifyListeners();

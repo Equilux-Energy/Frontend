@@ -1,9 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../Services/blockchain_service.dart';
 import '../Services/cognito_service.dart';
-import '../Services/metamask.dart';
 import '../Services/theme_provider.dart';
 import '../Widgets/animated_background.dart';
 import 'package:intl/intl.dart';
@@ -21,8 +22,8 @@ class TransactionPage extends StatefulWidget {
 
 class _TransactionPageState extends State<TransactionPage> {
   // Filter values
-  RangeValues _priceRange = const RangeValues(0, 1000);
-  RangeValues _amountRange = const RangeValues(0, 500);
+  RangeValues _priceRange = const RangeValues(0, 1000000);
+  RangeValues _amountRange = const RangeValues(0, 1000000);
   String _searchQuery = '';
   String _filterType = 'All'; // All, Buy, Sell
   
@@ -31,6 +32,43 @@ class _TransactionPageState extends State<TransactionPage> {
 
   // All offers list
   List<Map<String, dynamic>> _allOffers = [];
+  
+  // Mock offers data for fallback
+  final List<Map<String, dynamic>> _offers = [
+    {
+      'id': '1',
+      'offerType': 'Sell',
+      'energyAmount': 200,
+      'price': 80.0,
+      'pricePerUnit': 0.40,
+      'user': '0x7d5F...E34a',
+      'description': 'Solar energy surplus from my home system',
+      'createdAt': DateTime.now().subtract(const Duration(days: 1)),
+      'creatorUsername': '0x7d5F...E34a',
+    },
+    {
+      'id': '2',
+      'offerType': 'Buy',
+      'energyAmount': 150,
+      'price': 45.0,
+      'pricePerUnit': 0.30,
+      'user': '0x3c2B...A71c',
+      'description': 'Looking for renewable energy for my business',
+      'createdAt': DateTime.now().subtract(const Duration(days: 2)),
+      'creatorUsername': '0x3c2B...A71c',
+    },
+    {
+      'id': '3',
+      'offerType': 'Sell',
+      'energyAmount': 75,
+      'price': 22.5,
+      'pricePerUnit': 0.30,
+      'user': '0x8a1D...F52b',
+      'description': 'Wind energy from community farm',
+      'createdAt': DateTime.now().subtract(const Duration(days: 3)),
+      'creatorUsername': '0x8a1D...F52b',
+    },
+  ];
 
   // Add these variables to the _TransactionPageState class
   bool _showTransactionHistory = false;
@@ -79,145 +117,123 @@ class _TransactionPageState extends State<TransactionPage> {
   String _description = '';
   DateTime _startDate = DateTime.now().add(const Duration(days: 1));
   DateTime _endDate = DateTime.now().add(const Duration(days: 7));
+  bool _showOwnOffers = true;
 
   // Instance of blockchain service
   final BlockchainService _blockchainService = BlockchainService();
 
   // Loading indicator
   bool _isCreatingOffer = false;
-
-  // Mock data for offers
-  final List<Map<String, dynamic>> _offers = [
-    {
-      'id': '1',
-      'type': 'Sell',
-      'amount': 120.5,
-      'price': 35.75,
-      'pricePerUnit': 0.297,
-      'user': '0x7a3B...F42c',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 2)),
-      'description': 'Excess solar energy from residential panels',
-      'status': 'Active',
-    },
-    {
-      'id': '2',
-      'type': 'Buy',
-      'amount': 45.0,
-      'price': 15.30,
-      'pricePerUnit': 0.34,
-      'user': '0x2c5D...A91b',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 5)),
-      'description': 'Need extra power for EV charging station',
-      'status': 'Active',
-    },
-    {
-      'id': '3',
-      'type': 'Sell',
-      'amount': 300.0,
-      'price': 81.00,
-      'pricePerUnit': 0.27,
-      'user': '0x8e4F...C23a',
-      'timestamp': DateTime.now().subtract(const Duration(days: 1)),
-      'description': 'Community wind farm surplus',
-      'status': 'Active',
-    },
-    {
-      'id': '4', 
-      'type': 'Buy',
-      'amount': 200.0,
-      'price': 70.00,
-      'pricePerUnit': 0.35,
-      'user': '0x5a1B...D82e',
-      'timestamp': DateTime.now().subtract(const Duration(days: 2)),
-      'description': 'Small business looking for renewable energy',
-      'status': 'Active',
-    },
-    {
-      'id': '5',
-      'type': 'Sell',
-      'amount': 500.0,
-      'price': 125.00,
-      'pricePerUnit': 0.25,
-      'user': '0x7a3B...F42c',
-      'timestamp': DateTime.now().subtract(const Duration(hours: 12)),
-      'description': 'Industrial solar farm excess production',
-      'status': 'Active',
-    },
-  ];
+  bool _isWalletConnected = false;
+  String? _currentWalletAddress;
+  int? _currentChainId;
 
   @override
   void initState() {
     super.initState();
     _initializeBlockchain();
-    _loadActiveOffers();
   }
 
   Future<void> _initializeBlockchain() async {
-    await _blockchainService.initialize();
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      await _blockchainService.initialize();
+      
+      // Setup listener for blockchain connection changes
+      _blockchainService.addListener(_onBlockchainStateChanged);
+      
+      setState(() {
+        _isWalletConnected = _blockchainService.isConnected;
+        _currentWalletAddress = _blockchainService.currentAddress;
+        _currentChainId = _blockchainService.currentChainId;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error initializing blockchain: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
   
-  // Filter offers based on criteria
-  // void _applyFilters() {
-  //   setState(() {
-  //     _filteredOffers = _offers.where((offer) {
-        
-  //       // Filter by price range
-  //       if (offer['price'] < _priceRange.start || offer['price'] > _priceRange.end) {
-  //         return false;
-  //       }
-        
-  //       // Filter by amount range
-  //       if (offer['amount'] < _amountRange.start || offer['amount'] > _amountRange.end) {
-  //         return false;
-  //       }
-        
-  //       // Filter by search query (check user or description)
-  //       if (_searchQuery.isNotEmpty) {
-  //         final String description = offer['description'].toString().toLowerCase();
-  //         final String user = offer['user'].toString().toLowerCase();
-  //         final String query = _searchQuery.toLowerCase();
-          
-  //         if (!description.contains(query) && !user.contains(query)) {
-  //           return false;
-  //         }
-  //       }
-        
-  //       return true;
-  //     }).toList();
-  //   });
-  // }
-
-  // Check if an offer matches the current filters
-  bool _offerMatchesFilters(Map<String, dynamic> offer) {
-    // Filter by type
-    if (_filterType != 'All' && offer['type'] != _filterType) {
-      return false;
-    }
-    
-    // Filter by price range
-    if (offer['price'] < _priceRange.start || offer['price'] > _priceRange.end) {
-      return false;
-    }
-    
-    // Filter by amount range
-    if (offer['amount'] < _amountRange.start || offer['amount'] > _amountRange.end) {
-      return false;
-    }
-    
-    // Filter by search query (check user or description)
-    if (_searchQuery.isNotEmpty) {
-      final String description = offer['description'].toString().toLowerCase();
-      final String user = offer['user'].toString().toLowerCase();
-      final String query = _searchQuery.toLowerCase();
-      
-      if (!description.contains(query) && !user.contains(query)) {
-        return false;
-      }
-    }
-    
-    return true;
+  void _onBlockchainStateChanged() {
+  final wasConnected = _isWalletConnected;
+  final isNowConnected = _blockchainService.isConnected;
+  
+  setState(() {
+    _isWalletConnected = isNowConnected;
+    _currentWalletAddress = _blockchainService.currentAddress;
+    _currentChainId = _blockchainService.currentChainId;
+  });
+  
+  // If wallet just got connected, load offers
+  if (!wasConnected && isNowConnected) {
+    _loadActiveOffers();
   }
-
+}
+  
+  @override
+  void dispose() {
+    // Remove listener when widget is disposed
+    _blockchainService.removeListener(_onBlockchainStateChanged);
+    super.dispose();
+  }
+  
+  Future<void> _connectWallet() async {
+  setState(() {
+    _isLoading = true;
+  });
+  
+  try {
+    final success = await _blockchainService.connectWallet();
+    
+    if (success) {
+      setState(() {
+        _isWalletConnected = true;
+        _currentWalletAddress = _blockchainService.currentAddress;
+        _currentChainId = _blockchainService.currentChainId;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wallet connected successfully')),
+      );
+      
+      // Load offers after successful connection
+      _loadActiveOffers();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to connect wallet')),
+      );
+    }
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error connecting wallet: $e')),
+    );
+  } finally {
+    setState(() {
+      _isLoading = false;
+    });
+  }
+}
+  
+  Future<void> _switchNetwork(int targetChainId) async {
+    try {
+      final success = await _blockchainService.switchNetwork(targetChainId);
+      if (!success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to switch network')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error switching network: $e')),
+      );
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
@@ -225,83 +241,77 @@ class _TransactionPageState extends State<TransactionPage> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDarkMode = themeProvider.isDarkMode;
 
-    return ChangeNotifierProvider<MetaMaskProvider>(
-      create: (context) => MetaMaskProvider()..init(),
-      builder: (context, child) {
-        return Stack(
-          children: [
-            if (isDarkMode) const AnimatedBackground() else const AnimatedBackgroundLight(),
-            Scaffold(
-              backgroundColor: Colors.transparent,
-              appBar: isMobile ? _buildAppBar(context) : null,
-              drawer: isMobile ? _buildDrawer(context) : null,
-              body: Row(
-                children: [
-                  // Permanent sidebar for desktop
-                  if (!isMobile) _buildSidebar(context),
-                  
-                  // Main content area
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(24.0),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+    return Stack(
+      children: [
+        if (isDarkMode) const AnimatedBackground() else const AnimatedBackgroundLight(),
+        Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: isMobile ? _buildAppBar(context) : null,
+          drawer: isMobile ? _buildDrawer(context) : null,
+          body: Row(
+            children: [
+              // Permanent sidebar for desktop
+              if (!isMobile) _buildSidebar(context),
+              
+              // Main content area
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(24.0),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top bar with profile and wallet for desktop
+                        if (!isMobile)
+                          _buildTopBar(context),
+                          
+                        const SizedBox(height: 16),
+                        
+                        // Create offer section
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Top bar with profile and wallet for desktop
-                            if (!isMobile)
-                              _buildTopBar(context),
-                              
-                            const SizedBox(height: 16),
-                            
-                            // Create offer section
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text('Energy Transactions', 
-                                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
-                                ElevatedButton.icon(
-                                  onPressed: () => _showCreateOfferDialog(),
-                                  icon: const Icon(Icons.add,color: Colors.white),
-                                  label: const Text('Create Offer'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF5C005C),
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
+                            Text('Energy Transactions', 
+                              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
+                            ElevatedButton.icon(
+                              onPressed: _isWalletConnected ? _showCreateOfferDialog : _connectWallet,
+                              icon: Icon(_isWalletConnected ? Icons.add : Icons.wallet, color: Colors.white),
+                              label: Text(_isWalletConnected ? 'Create Offer' : 'Connect Wallet'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF5C005C),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
-                              ],
+                              ),
                             ),
-                            const SizedBox(height: 24),
-                            
-                            // Filter section
-                            _buildFilterSection(),
-                            
-                            const SizedBox(height: 24),
-                            
-                            // Offers list
-                            _buildOffersSection(isMobile),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 24),
+                        
+                        // Filter section
+                        _buildFilterSection(),
+                        
+                        const SizedBox(height: 24),
+                        
+                        // Offers list
+                        _buildOffersSection(isMobile),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
-              // In the Scaffold widget, add this right before the closing parenthesis:
-              floatingActionButton: FloatingActionButton.extended(
-                onPressed: () => _showCreateOfferDialog(),
-                label: const Text('Create Offer',style: TextStyle(color: Colors.white)),
-                icon: const Icon(Icons.add,color: Colors.white),
-                backgroundColor: const Color(0xFF5C005C),
-              ),
-            ),
-          ],
-        );
-      }
+            ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _isWalletConnected ? _showCreateOfferDialog : _connectWallet,
+            label: Text(_isWalletConnected ? 'Create Offer' : 'Connect Wallet', style: TextStyle(color: Colors.white)),
+            icon: Icon(_isWalletConnected ? Icons.add : Icons.wallet, color: Colors.white),
+            backgroundColor: const Color(0xFF5C005C),
+          ),
+        ),
+      ],
     );
   }
 
@@ -645,103 +655,120 @@ class _TransactionPageState extends State<TransactionPage> {
 }
 
   Future<void> _createOffer(BuildContext dialogContext) async {
-  // Check form validity
-  if (_formKey.currentState?.validate() != true) {
-    return;
-  }
-  
-  // Save form values
-  _formKey.currentState?.save();
-  
-  setState(() {
-    _isCreatingOffer = true;
-  });
-  
-  try {
-    // Get the MetaMask provider
-    final provider = Provider.of<MetaMaskProvider>(context, listen: false);
-    
-    // Check if wallet is connected
-    if (!provider.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please connect your wallet first')),
-      );
-      setState(() {
-        _isCreatingOffer = false;
-      });
+    // Check form validity
+    if (_formKey.currentState?.validate() != true) {
       return;
     }
+    
+    // Save form values
+    _formKey.currentState?.save();
+    
+    setState(() {
+      _isCreatingOffer = true;
+    });
+    
+    try {
+      // Check if wallet is connected
+      if (!_isWalletConnected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please connect your wallet first')),
+        );
+        setState(() {
+          _isCreatingOffer = false;
+        });
+        return;
+      }
 
-    // Check if on correct network
-    if (provider.currentChain != '0x4268') { // Holesky
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please switch to Holesky testnet')),
-      );
+      // Check if on correct network (Holesky testnet has chain ID 17000)
+      if (_currentChainId != 17000) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please switch to Holesky testnet')),
+        );
+        
+        // Attempt to switch networks
+        await _switchNetwork(17000);
+        
+        setState(() {
+          _isCreatingOffer = false;
+        });
+        return;
+      }
       
-      // Attempt to switch networks
-      await provider.switchChain();
+      // Calculate total price (amount * price per unit)
+      final totalPrice = _energyAmount * _pricePerUnit;
+      
+      // Convert to appropriate format for blockchain (assuming energy amount and price as BigInt with 18 decimals)
+      final energyAmountBigInt = BigInt.from(_energyAmount * 1e18);
+      final pricePerUnitBigInt = BigInt.from(_pricePerUnit * 1e18);
+      
+      // Convert dates to Unix timestamps (seconds since epoch)
+      final startTimeBigInt = BigInt.from(_startDate.millisecondsSinceEpoch ~/ 1000);
+      final endTimeBigInt = BigInt.from(_endDate.millisecondsSinceEpoch ~/ 1000);
+      
+      // Map offer type to integer enum value (0 for Sell, 1 for Buy)
+      final offerTypeInt = _offerType == 'Sell' ? 0 : 1;
+      
+      // Call the createOffer function
+      final txHash = await _blockchainService.createOffer(
+        offerTypeInt,
+        energyAmountBigInt,
+        pricePerUnitBigInt,
+        startTimeBigInt,
+        endTimeBigInt
+      );
       
       setState(() {
         _isCreatingOffer = false;
       });
-      return;
-    }
-    
-    final txHash = await _blockchainService.createEnergyOffer(
-      context: context,
-      amount: _energyAmount,
-      pricePerUnit: _pricePerUnit,
-      startTime: _startDate,
-      endTime: _endDate,
-      isSelling: _offerType == 'Sell',
-    );
-    
-    setState(() {
-      _isCreatingOffer = false;
-    });
-    
-    // Close the dialog
-    Navigator.pop(dialogContext);
-    
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Offer created successfully! Transaction: ${txHash.substring(0, 10)}...'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: 'View',
-          textColor: Colors.white,
-          onPressed: () {
-            final url = 'https://holesky.etherscan.io/tx/$txHash';
-            launch(url);
-          },
+      
+      // Close the dialog
+      Navigator.pop(dialogContext);
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Offer created successfully! Transaction: ${txHash.substring(0, 10)}...'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'View',
+            textColor: Colors.white,
+            onPressed: () {
+              // Use the current chain ID to determine which explorer to use
+              final explorerUrl = _currentChainId == 17000
+                  ? 'https://holesky.etherscan.io/tx/$txHash'
+                  : 'https://etherscan.io/tx/$txHash';
+              launch(explorerUrl);
+            },
+          ),
         ),
-      ),
-    );
-    
-  } catch (e) {
-    setState(() {
-      _isCreatingOffer = false;
-    });
-    
-    String errorMessage = e.toString();
-    // Clean up error message for display
-    if (errorMessage.contains('execution reverted')) {
-      errorMessage = 'Transaction rejected by the blockchain. Check your parameters.';
+      );
+      
+      // Refresh the offers list
+      _loadActiveOffers();
+      
+    } catch (e) {
+      setState(() {
+        _isCreatingOffer = false;
+      });
+      
+      String errorMessage = e.toString();
+      // Clean up error message for display
+      if (errorMessage.contains('execution reverted')) {
+        errorMessage = 'Transaction rejected by the blockchain. Check your parameters.';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error creating offer: $errorMessage'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      
+      debugPrint('Detailed error creating offer: $e');
     }
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Error creating offer: $errorMessage'),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 5),
-      ),
-    );
-    
-    debugPrint('Detailed error creating offer: $e');
   }
-}
 
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
@@ -828,79 +855,128 @@ class _TransactionPageState extends State<TransactionPage> {
   
   Widget _buildWalletButton(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    return Consumer<MetaMaskProvider>(
-      builder: (context, provider, child) {
-        if (provider.isConnected && provider.isInOperatingChain) {
-          return ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
+    
+    if (_isWalletConnected && _currentWalletAddress != null) {
+      // Connected state
+      String displayAddress = '${_currentWalletAddress!.substring(0, 6)}...${_currentWalletAddress!.substring(_currentWalletAddress!.length - 4)}';
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+        ),
+        onPressed: () {
+          // Show wallet options menu
+          _showWalletOptions(context);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5C005C), Color(0xFF240029)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            onPressed: () {},
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-              child: Text(
-                '${provider.currentBalance} USD',
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-          );
-        } else if (provider.isEnabled) {
-          return IconButton(
-            icon: Icon(Icons.wallet, color: themeProvider.textColor),
-            onPressed: () => context.read<MetaMaskProvider>().connect(),
-          );
-        } else {
-          return const SizedBox.shrink();
-        }
-      },
-    );
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          child: Text(
+            displayAddress,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    } else {
+      // Disconnected state
+      return IconButton(
+        icon: Icon(Icons.wallet, color: themeProvider.textColor),
+        onPressed: _connectWallet,
+      );
+    }
   }
 
-  Widget _buildMobileWalletButton(BuildContext context) {
-    return Consumer<MetaMaskProvider>(
-      builder: (context, provider, child) {
-        if (provider.isConnected && provider.isInOperatingChain) {
-          return ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
+  void _showWalletOptions(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text('Wallet Options', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Address: ${_currentWalletAddress ?? 'Not connected'}',
+              style: const TextStyle(color: Colors.white70),
             ),
-            onPressed: () {},
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-              child: Text(
-                '${provider.currentBalance} USD',
-                style: const TextStyle(color: Colors.white),
-              ),
+            const SizedBox(height: 8),
+            Text(
+              'Network ID: ${_currentChainId ?? 'Unknown'}',
+              style: const TextStyle(color: Colors.white70),
             ),
-          );
-        } else if (provider.isEnabled) {
-          return IconButton(
-            icon: const Icon(Icons.wallet, color: Colors.white),
-            onPressed: () => context.read<MetaMaskProvider>().connect(),
-          );
-        } else {
-          return const SizedBox.shrink();
-        }
-      },
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Copy Address', style: TextStyle(color: Colors.purple)),
+            onPressed: () {
+              if (_currentWalletAddress != null) {
+                // Copy to clipboard functionality would go here
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Address copied to clipboard')),
+                );
+              }
+            },
+          ),
+          TextButton(
+            child: const Text('Switch to Holesky', style: TextStyle(color: Colors.purple)),
+            onPressed: () {
+              Navigator.pop(context);
+              _switchNetwork(17000); // Holesky testnet
+            },
+          ),
+          TextButton(
+            child: const Text('Close', style: TextStyle(color: Colors.white)),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
     );
+  }
+  
+  // Mobile version of wallet button
+  Widget _buildMobileWalletButton(BuildContext context) {
+    if (_isWalletConnected && _currentWalletAddress != null) {
+      String displayAddress = '${_currentWalletAddress!.substring(0, 6)}...${_currentWalletAddress!.substring(_currentWalletAddress!.length - 4)}';
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+        ),
+        onPressed: () {
+          _showWalletOptions(context);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5C005C), Color(0xFF240029)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          child: Text(
+            displayAddress,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    } else {
+      return IconButton(
+        icon: const Icon(Icons.wallet, color: Colors.white),
+        onPressed: _connectWallet,
+      );
+    }
   }
   
   Widget _buildDrawer(BuildContext context) {
@@ -1159,6 +1235,26 @@ class _TransactionPageState extends State<TransactionPage> {
             ),
             const SizedBox(height: 16),
             Row(
+              children: [
+                Checkbox(
+                  value: _showOwnOffers,
+                  activeColor: Colors.purple,
+                  checkColor: Colors.white,
+                  onChanged: (bool? value) {
+                    setState(() {
+                      _showOwnOffers = value ?? true;
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Show my own offers',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 OutlinedButton(
@@ -1170,13 +1266,14 @@ class _TransactionPageState extends State<TransactionPage> {
                   onPressed: () {
                     setState(() {
                       // Reset filter values
-                      _priceRange = const RangeValues(0, 1000);
-                      _amountRange = const RangeValues(0, 500);
+                      _priceRange = const RangeValues(0, 1000000);
+                      _amountRange = const RangeValues(0, 1000000);
                       _searchQuery = '';
                       _filterType = 'All';
+                      _showOwnOffers = true;
                       
                       // Reset filtered offers to show all offers
-                      _filteredOffers = List.from(_offers);
+                      _filteredOffers = List.from(_allOffers);
                     });
                   },
                   child: const Text('Reset Filters'),
@@ -1285,7 +1382,7 @@ class _TransactionPageState extends State<TransactionPage> {
               child: RangeSlider(
                 values: _priceRange,
                 min: 0,
-                max: 1000,
+                max: 1000000,
                 divisions: 100,
                 activeColor: Colors.purple,
                 inactiveColor: Colors.purple.withOpacity(0.2),
@@ -1323,7 +1420,7 @@ class _TransactionPageState extends State<TransactionPage> {
               child: RangeSlider(
                 values: _amountRange,
                 min: 0,
-                max: 500,
+                max: 1000000,
                 divisions: 50,
                 activeColor: Colors.purple,
                 inactiveColor: Colors.purple.withOpacity(0.2),
@@ -1437,6 +1534,8 @@ Widget _buildTabSelector({required String title, required bool isActive, require
 }
 
 // Split the original offers section content into a new method
+// Modify the _buildAvailableOffersSection method
+
 Widget _buildAvailableOffersSection(bool isMobile) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1452,16 +1551,64 @@ Widget _buildAvailableOffersSection(bool isMobile) {
               color: Colors.white,
             ),
           ),
-          Text(
-            '${_filteredOffers.length} offers found',
-            style: const TextStyle(color: Colors.grey),
+          Row(
+            children: [
+              // Show refresh button only when connected
+              if (_isWalletConnected)
+                IconButton(
+                  icon: Icon(
+                    Icons.refresh,
+                    color: _isLoading ? Colors.purple.shade300 : Colors.white,
+                  ),
+                  tooltip: 'Refresh offers',
+                  onPressed: _isLoading
+                      ? null
+                      : _loadActiveOffers,
+                ),
+              const SizedBox(width: 8),
+              Text(
+                '${_filteredOffers.length} offers found',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ],
           ),
         ],
       ),
       const SizedBox(height: 16),
-      isMobile 
-          ? _buildOffersCardList() 
-          : _buildOffersTable(),
+      
+      // Show connection prompt if wallet not connected
+      if (!_isWalletConnected)
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.wallet,
+                color: Colors.white54,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Connect your wallet to view available energy offers',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.account_balance_wallet),
+                label: const Text('Connect Wallet'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5C005C),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                onPressed: _connectWallet,
+              ),
+            ],
+          ),
+        )
+      else
+        isMobile ? _buildOffersCardList() : _buildOffersTable(),
     ],
   );
 }
@@ -1823,72 +1970,83 @@ Color _getStatusColor(String status) {
 }
   
   DataRow _buildOfferRow(Map<String, dynamic> offer) {
-  // Change from 'type' to 'offerType'
-  final isSellType = offer['offerType'] == 'Sell';
-  // Change from 'timestamp' to 'createdAt'
-  final formattedTime = _formatTimestamp(offer['createdAt']);
-  
-  return DataRow(
-    cells: [
-      DataCell(
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: (isSellType ? Colors.green : Colors.blue).withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            offer['offerType'], // Changed from 'type'
-            style: TextStyle(
-              color: isSellType ? Colors.green : Colors.blue,
-              fontWeight: FontWeight.bold,
+    final isSellType = offer['offerType'] == 'Sell';
+    final formattedTime = _formatTimestamp(offer['createdAt']);
+    
+    return DataRow(
+      cells: [
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: (isSellType ? Colors.green : Colors.blue).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              offer['offerType'],
+              style: TextStyle(
+                color: isSellType ? Colors.green : Colors.blue,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
-      ),
-      DataCell(
-        Text(
-          '${offer['energyAmount'].toStringAsFixed(1)}', // Changed from 'amount'
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
-      DataCell(
-        Text(
-          '\$${offer['price'].toStringAsFixed(2)}',
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
-      DataCell(
-        Text(
-          '\$${offer['pricePerUnit'].toStringAsFixed(3)}/kWh',
-          style: const TextStyle(color: Colors.white, fontSize: 13),
-        ),
-      ),
-      DataCell(
-        Text(
-          offer['user'],
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
-      DataCell(
-        SizedBox(
-          width: 200,
-          child: Text(
-            offer['description'],
+        DataCell(
+          Text(
+            '${offer['energyAmount'].toStringAsFixed(1)}',
             style: const TextStyle(color: Colors.white),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
         ),
-      ),
-      DataCell(
-        Text(
-          formattedTime,
-          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        DataCell(
+          Text(
+            '\$${offer['price'].toStringAsFixed(2)}',
+            style: const TextStyle(color: Colors.white),
+          ),
         ),
-      ),
-      DataCell(
-        Row(
+        DataCell(
+          Text(
+            '\$${offer['pricePerUnit'].toStringAsFixed(3)}/kWh',
+            style: const TextStyle(color: Colors.white, fontSize: 13),
+          ),
+        ),
+        DataCell(
+          Text(
+            offer['user'],
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+        DataCell(
+          SizedBox(
+            width: 200,
+            child: Text(
+              offer['description'],
+              style: const TextStyle(color: Colors.white),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            formattedTime,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ),
+        DataCell(
+  Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      // Check if this offer belongs to the current user
+      offer['creator'].toString().toLowerCase() == _currentWalletAddress?.toLowerCase()
+      ? Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.purple.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Text('Your Offer', style: TextStyle(color: Colors.white))
+        )
+      : Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             ElevatedButton(
@@ -1900,37 +2058,16 @@ Color _getStatusColor(String status) {
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-              // In _buildOfferRow method, replace the onPressed callback for the Buy/Sell button:
               onPressed: () {
-                // Create transaction
-                final newTransaction = {
-                  'id': 'TX${(1000 + _transactionHistory.length).toString()}',
-                  'type': isSellType ? 'Buy' : 'Sell',
-                  'amount': offer['amount'],
-                  'price': offer['pricePerUnit'],
-                  'totalPrice': offer['price'],
-                  'counterparty': offer['user'],
-                  'timestamp': DateTime.now(),
-                  'status': 'Completed',
-                };
-                
-                // Add to transaction history
-                setState(() {
-                  _transactionHistory.insert(0, newTransaction);
-                });
-                
-                // Show success message
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('${isSellType ? 'Bought' : 'Sold'} energy from offer ${offer['id']}'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-                
-                // Switch to transaction history tab
-                setState(() {
-                  _showTransactionHistory = true;
-                });
+                if (isSellType) {
+                  // Buy energy using blockchain service
+                  _buyEnergy(offer);
+                } else {
+                  // Sell to a buy offer - not implemented yet
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Selling to buy offers not yet implemented')),
+                  );
+                }
               },
               child: Text(isSellType ? 'Buy' : 'Sell'),
             ),
@@ -1954,14 +2091,14 @@ Color _getStatusColor(String status) {
                   arguments: {
                     'user': offer['user'],
                     'offerId': offer['id'],
-                    'offerType': offer['type'],
+                    'offerType': offer['offerType'],
                   },
                 );
                 
                 // Show confirmation toast
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Starting chat with ${offer["user"]} about ${offer["type"]} offer'),
+                    content: Text('Starting chat with ${offer["user"]} about ${offer["offerType"]} offer'),
                     backgroundColor: Colors.blue,
                   ),
                 );
@@ -1969,20 +2106,70 @@ Color _getStatusColor(String status) {
             ),
           ],
         ),
-      ),
     ],
-  );
-}
+  ),
+),
+      ],
+    );
+  }
   
   Widget _buildOffersCardList() {
+  if (_isLoading) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF5C005C)),
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Loading offers from blockchain...',
+            style: TextStyle(color: Colors.white, fontSize: 16)
+          )
+        ],
+      ),
+    );
+  }
+  
+  if (_filteredOffers.isEmpty) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.search_off,
+            color: Colors.white54,
+            size: 64,
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No offers found matching your criteria',
+            style: TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh Offers'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF5C005C),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: _loadActiveOffers,
+          ),
+        ],
+      ),
+    );
+  }
+  
   return ListView.builder(
     shrinkWrap: true,
     physics: const NeverScrollableScrollPhysics(),
     itemCount: _filteredOffers.length,
     itemBuilder: (context, index) {
       final offer = _filteredOffers[index];
-      final isSellType = offer['offerType'] == 'Sell'; // Changed from 'type'
-      final formattedTime = _formatTimestamp(offer['createdAt']); // Changed from 'timestamp'
+      final isSellType = offer['offerType'] == 'Sell';
+      final formattedTime = _formatTimestamp(offer['createdAt']);
       
       return Card(
         margin: const EdgeInsets.only(bottom: 12),
@@ -2003,7 +2190,7 @@ Color _getStatusColor(String status) {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
-                      offer['offerType'], // Changed from 'type'
+                      offer['offerType'],
                       style: TextStyle(
                         color: isSellType ? Colors.green : Colors.blue,
                         fontWeight: FontWeight.bold,
@@ -2011,7 +2198,7 @@ Color _getStatusColor(String status) {
                     ),
                   ),
                   Text(
-                    formattedTime, // Changed from 'timestamp'
+                    formattedTime,
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                 ],
@@ -2022,7 +2209,7 @@ Color _getStatusColor(String status) {
                   const Icon(Icons.bolt, color: Colors.yellow, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    '${offer['energyAmount'].toStringAsFixed(1)} kWh', // Changed from 'amount'
+                    '${offer['energyAmount'].toStringAsFixed(1)} kWh',
                     style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ],
@@ -2070,13 +2257,15 @@ Color _getStatusColor(String status) {
                         ),
                       ),
                       onPressed: () {
-                        // Handle the transaction
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${isSellType ? 'Buying' : 'Selling'} energy from offer ${offer['id']}'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
+                        if (isSellType) {
+                          // Buy energy using blockchain service
+                          _buyEnergy(offer);
+                        } else {
+                          // Sell to a buy offer - not implemented yet
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Selling to buy offers not yet implemented')),
+                          );
+                        }
                       },
                       child: Text(isSellType ? 'Buy Now' : 'Sell Now'),
                     ),
@@ -2101,14 +2290,14 @@ Color _getStatusColor(String status) {
                         arguments: {
                           'user': offer['user'],
                           'offerId': offer['id'],
-                          'offerType': offer['type'],
+                          'offerType': offer['offerType'],
                         },
                       );
                       
                       // Show confirmation toast
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Starting chat with ${offer["user"]} about ${offer["type"]} offer'),
+                          content: Text('Starting chat with ${offer["user"]} about ${offer["offerType"]} offer'),
                           backgroundColor: Colors.blue,
                         ),
                       );
@@ -2151,59 +2340,126 @@ Color _getStatusColor(String status) {
   });
   
   try {
-    // This would be replaced with actual blockchain call to get active offers
-    // For now, we'll use mock data or you can implement the actual blockchain call
-    // Example:
-    // final offers = await _blockchainService.getActiveOffers(context);
+    // Check if wallet is connected - attempt to connect if not
+    if (!_isWalletConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please connect your wallet to view offers')),
+      );
+      setState(() {
+        _isLoading = false;
+        _allOffers = _offers; // Use mock data as fallback
+        _applyFilters();
+      });
+      return;
+    }
+
+    // Get active offer IDs
+    final activeOfferIds = await _blockchainService.getActiveOffers();
     
-    // Mock data for testing
-    await Future.delayed(const Duration(seconds: 1));
-    final now = DateTime.now();
+    if (activeOfferIds.isEmpty) {
+      setState(() {
+        _isLoading = false;
+        _allOffers = [];
+        _filteredOffers = [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active offers found on the blockchain')),
+      );
+      return;
+    }
     
-    final List<Map<String, dynamic>> offers = [
-      {
-        'id': '0x123456789abcdef',
-        'offerType': 'Sell',
-        'type': 'Sell', // Add this for backward compatibility
-        'energyAmount': 100,
-        'amount': 100, // Add this for backward compatibility
-        'pricePerUnit': 15.5,
-        'price': 1550.0, // Add this - total price
-        'totalPrice': 1550,
-        'description': 'Clean solar energy available',
-        'startTime': now.add(const Duration(days: 1)),
-        'endTime': now.add(const Duration(days: 30)),
-        'creator': '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
-        'creatorUsername': 'EnergyTrader1',
-        'user': 'EnergyTrader1', // Add this for backward compatibility
-        'status': 'Active',
-        'createdAt': now.subtract(const Duration(hours: 5)),
-        'timestamp': now.subtract(const Duration(hours: 5)), // Add this for backward compatibility
-      },
-      // Add more mock offers as needed
-    ];
+    List<Map<String, dynamic>> offers = [];
+    
+    // Loop through each offer ID and get details
+    for (final offerId in activeOfferIds) {
+      try {
+        final offerDetails = await _blockchainService.getOfferDetails(offerId);
+        
+        // Convert the offer details to match our UI format
+        final offerTypeInt = offerDetails['offerType'] as int;
+        final offerStatusInt = offerDetails['status'] as int;
+        
+        // Convert timestamp from seconds to milliseconds for DateTime
+        final createdAtDateTime = DateTime.fromMillisecondsSinceEpoch(
+          (offerDetails['createdAt'] as BigInt).toInt() * 1000
+        );
+        
+        // Convert blockchain values properly
+        final energyAmount = (offerDetails['energyAmount'] as BigInt).toDouble() / 1e18;
+        final pricePerUnit = (offerDetails['pricePerUnit'] as BigInt).toDouble() / 1e18;
+        
+        // Calculate USD price correctly instead of using blockchain's totalPrice
+        final totalPrice = energyAmount * pricePerUnit;
+        
+        // Format creator address for display
+        final creatorAddress = offerDetails['creator'];
+        final shortAddress = '${creatorAddress.substring(0, 6)}...${creatorAddress.substring(creatorAddress.length - 4)}';
+        final startDateTime = DateTime.fromMillisecondsSinceEpoch(
+          (offerDetails['startTime'] as BigInt).toInt() * 1000
+        );
+        final endDateTime = DateTime.fromMillisecondsSinceEpoch(
+          (offerDetails['endTime'] as BigInt).toInt() * 1000
+        );
+        
+        final offer = {
+          'id': offerId,
+          'offerType': offerTypeInt == 0 ? 'Sell' : 'Buy',
+          'energyAmount': energyAmount,
+          'pricePerUnit': pricePerUnit,
+          'price': totalPrice, // Use correctly calculated price
+          'description': 'Energy ${offerTypeInt == 0 ? "sell" : "buy"} offer',
+          'startTime': startDateTime,
+          'endTime': endDateTime,
+          'creator': offerDetails['creator'],
+          'creatorUsername': offerDetails['creatorUsername'].toString().isEmpty ? shortAddress : offerDetails['creatorUsername'],
+          'user': offerDetails['creatorUsername'].toString().isEmpty ? shortAddress : offerDetails['creatorUsername'],
+          'status': offerStatusInt == 0 ? 'Active' : (offerStatusInt == 1 ? 'Accepted' : 'Cancelled'),
+          'createdAt': createdAtDateTime,
+          'timestamp': createdAtDateTime,
+        };
+        
+        if (offerStatusInt == 0) { // Only add active offers
+          offers.add(offer);
+        }
+      } catch (e) {
+        print('Error loading offer $offerId: $e');
+        // Continue with next offer
+      }
+    }
     
     setState(() {
       _allOffers = offers;
-      _applyFilters(); // Apply any active filters
+      _applyFilters(); // Apply filters to the loaded offers
       _isLoading = false;
     });
     
+    if (offers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active offers found')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Successfully loaded ${offers.length} offers')),
+      );
+    }
+    
   } catch (e) {
+    print('Error loading offers: $e');
     setState(() {
       _isLoading = false;
+      
+      // If we failed to load offers from blockchain, show at least the mock data
+      _allOffers = _offers; // Use the mock data defined earlier
+      _applyFilters();
     });
     
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Error loading offers: $e'),
+        content: Text('Error loading active offers: ${e.toString().substring(0, min(50, e.toString().length))}...'),
         backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
       ),
     );
-    
-    if (kDebugMode) {
-      print('Error loading offers: $e');
-    }
   }
 }
 
@@ -2211,6 +2467,13 @@ void _applyFilters() {
   // Start with all offers
   List<Map<String, dynamic>> filtered = List.from(_allOffers);
   
+  // Apply owner filter if needed
+  if (!_showOwnOffers && _currentWalletAddress != null) {
+    filtered = filtered.where((offer) => 
+      offer['creator'].toString().toLowerCase() != _currentWalletAddress!.toLowerCase()
+    ).toList();
+  }
+
   // Apply search query filter
   if (_searchQuery.isNotEmpty) {
     filtered = filtered.where((offer) {
@@ -2230,9 +2493,9 @@ void _applyFilters() {
     return price >= _priceRange.start && price <= _priceRange.end;
   }).toList();
   
-  // Apply amount range filter
+  // Apply amount range filter - FIX HERE: Change from 'as int' to 'as double'
   filtered = filtered.where((offer) {
-    final amount = offer['energyAmount'] as int;
+    final amount = offer['energyAmount'] as double; // Changed from int to double
     return amount >= _amountRange.start && amount <= _amountRange.end;
   }).toList();
   
@@ -2240,4 +2503,104 @@ void _applyFilters() {
     _filteredOffers = filtered;
   });
 }
+
+Future<void> _buyEnergy(Map<String, dynamic> offer) async {
+    if (!_isWalletConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please connect your wallet first')),
+      );
+      return;
+    }
+    
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      // Check if on correct network
+      if (_currentChainId != 17000) { // 17000 is Holesky testnet
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please switch to Holesky testnet')),
+        );
+        
+        await _switchNetwork(17000);
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
+      
+      // Get the listing ID and amount to buy
+      final listingId = BigInt.parse(offer['id']);
+      final amount = BigInt.from(offer['energyAmount'] * 1e18); // Convert to BigInt with 18 decimals
+      
+      final txHash = await _blockchainService.buyEnergy(listingId, amount);
+      
+      // Create transaction record
+      final newTransaction = {
+        'id': 'TX${(1000 + _transactionHistory.length).toString()}',
+        'type': 'Buy',
+        'amount': offer['energyAmount'],
+        'price': offer['pricePerUnit'],
+        'totalPrice': offer['price'],
+        'counterparty': offer['user'],
+        'timestamp': DateTime.now(),
+        'status': 'Completed',
+        'txHash': txHash,
+      };
+      
+      // Add to transaction history
+      setState(() {
+        _transactionHistory.insert(0, newTransaction);
+      });
+      
+      // Show success message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Successfully bought energy! Transaction: ${txHash.substring(0, 10)}...'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'View',
+            textColor: Colors.white,
+            onPressed: () {
+              final explorerUrl = _currentChainId == 17000
+                  ? 'https://holesky.etherscan.io/tx/$txHash'
+                  : 'https://etherscan.io/tx/$txHash';
+              launch(explorerUrl);
+            },
+          ),
+        ),
+      );
+      
+      // Switch to transaction history tab
+      setState(() {
+        _showTransactionHistory = true;
+        _isLoading = false;
+      });
+      
+      // Refresh offers
+      _loadActiveOffers();
+      
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      String errorMessage = e.toString();
+      if (errorMessage.contains('execution reverted')) {
+        errorMessage = 'Transaction rejected by the blockchain. Check your parameters.';
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error buying energy: $errorMessage'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      
+      debugPrint('Detailed error buying energy: $e');
+    }
+  }
 }

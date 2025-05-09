@@ -1,26 +1,55 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:web3dart/crypto.dart';
-import 'package:web3dart/web3dart.dart';
-import 'package:http/http.dart';
 import 'package:flutter/material.dart';
+import 'package:js/js.dart';
+import 'dart:html' as html;
+import 'dart:js_util';
 import '../models/blockchain_models.dart';
-import 'dart:js' as js;
+
+@JS('window.energyDapp.isMetaMaskInstalled')
+external bool isMetaMaskInstalled();
+
+@JS('window.energyDapp.connect')
+external dynamic connect();
+
+@JS('window.energyDapp.checkConnectedState')
+external dynamic checkConnectedState();
+
+@JS('window.energyDapp.getChainId')
+external dynamic getChainId();
+
+@JS('window.energyDapp.switchNetwork')
+external dynamic switchNetwork(int chainId);
+
+@JS('window.energyDapp.callContractFunction')
+external dynamic callContractFunction(String contractAddress, dynamic contractAbi, String method, dynamic args);
+
+@JS('window.energyDapp.sendContractTransaction')
+external dynamic sendContractTransaction(String address, dynamic abi, String method, dynamic args, String? value);
+
+@JS('window.energyDapp.setupEventHandlers')
+external void setupEventHandlers(dynamic accountsChangedCallback, dynamic chainChangedCallback);
 
 class BlockchainService with ChangeNotifier {
-  // Web3 client
-  Web3Client? _web3client;
+  // Contract addresses
+  late String _tokenContractAddress;
+  late String _marketContractAddress;
   
-  // Contract instances
-  DeployedContract? _tokenContract;
-  DeployedContract? _marketContract;
+  // Contract ABIs
+  dynamic _tokenContractAbi;
+  dynamic _marketContractAbi;
   
   // Current connected account
   String? _currentAddress;
   int? _currentChainId;
   bool _isConnected = false;
   
+  BlockchainService() {
+    // Call your initialize method right away
+    _initializeDapp();
+  }
+
   // Getters
   bool get isConnected => _isConnected;
   String? get currentAddress => _currentAddress;
@@ -29,36 +58,35 @@ class BlockchainService with ChangeNotifier {
   // Initialize the service
   Future<void> initialize() async {
     // Check if MetaMask is installed
-    if (!_isMetaMaskInstalled()) {
+    if (!isMetaMaskInstalled()) {
       throw Exception('MetaMask is not installed');
     }
     
-    // Load contract ABIs
+    // Load contract ABIs and addresses
     await _loadContracts();
     
-    // Add event listeners for account/chain changes
-    _setupEventListeners();
-  }
-  
-  // Check if MetaMask is installed
-  bool _isMetaMaskInstalled() {
-    return js.context.hasProperty('ethereum');
+    // Setup event listeners for account/chain changes
+    //_setupEventListeners();
   }
   
   // Setup event listeners for MetaMask
   void _setupEventListeners() {
-    js.context['ethereum'].callMethod('on', ['accountsChanged', js.allowInterop((accounts) {
+    // Create JS interoperable callbacks
+    final accountsChangedCallback = allowInterop((dynamic accounts) {
       _handleAccountsChanged(accounts);
-    })]);
+    });
     
-    js.context['ethereum'].callMethod('on', ['chainChanged', js.allowInterop((chainId) {
+    final chainChangedCallback = allowInterop((dynamic chainId) {
       _handleChainChanged(chainId);
-    })]);
+    });
+    
+    // Register callbacks with JavaScript
+    setupEventHandlers(accountsChangedCallback, chainChangedCallback);
   }
   
   // Handle account changes
   void _handleAccountsChanged(dynamic accounts) {
-    if (accounts.length > 0) {
+    if (accounts is List && accounts.isNotEmpty) {
       _currentAddress = accounts[0];
     } else {
       _currentAddress = null;
@@ -69,193 +97,319 @@ class BlockchainService with ChangeNotifier {
   
   // Handle chain changes
   void _handleChainChanged(dynamic chainId) {
-    _currentChainId = int.parse(chainId.toString());
-    // Reload the page as recommended by MetaMask
-    js.context.callMethod('location.reload', []);
+    _currentChainId = chainId is int ? chainId : 0;
+    notifyListeners();
   }
   
-  // Load contract ABIs and create contract objects
+  // Load contract ABIs and addresses
   Future<void> _loadContracts() async {
     // Load token contract ABI
-    String tokenAbiString = await rootBundle.loadString('lib/Pages/tokencontractabi.txt');
+    final tokenAbiString = await rootBundle.loadString('tokencontractabi.txt');
+    _tokenContractAbi = jsonDecode(tokenAbiString);
     
-    // Note: Market contract ABI loading would go here
-    String marketAbiString = await rootBundle.loadString('lib/Pages/marketcontractabi.txt');
+    // Load market contract ABI
+    final marketAbiString = await rootBundle.loadString('marketcontractabi.txt');
+    _marketContractAbi = marketAbiString;
     
-    // Parse the ABIs
-    final tokenAbi = ContractAbi.fromJson(tokenAbiString, 'EnergyToken');
-    final marketAbi = ContractAbi.fromJson(marketAbiString, 'EnergyMarket');
-    
-    // Create contract objects (assuming contract addresses, will need to be configured)
-    _tokenContract = DeployedContract(
-      tokenAbi, 
-      EthereumAddress.fromHex('0xYourTokenContractAddress'),
-    );
-    
-    // Market contract would be initialized here
-    _marketContract = DeployedContract(
-      marketAbi, 
-      EthereumAddress.fromHex('0xYourMarketContractAddress'),
-    );
+    // Set contract addresses (replace with your actual contract addresses)
+    _tokenContractAddress = '0x52e12c26029ed061de7568e2b1acd9a39277e3ef';
+    _marketContractAddress = '0x8c03ef4bb3f0c0e11d9dd95acacc55a6c6e35bf7';
   }
   
   // Connect to MetaMask
   Future<bool> connectWallet() async {
     try {
-      // Request accounts from MetaMask
-      final accounts = await js.context['ethereum']
-          .callMethod('request', [{'method': 'eth_requestAccounts'}]);
+      // Request accounts from MetaMask using our JS bridge
+      final result = await promiseToFuture(connect());
       
-      if (accounts.length > 0) {
-        _currentAddress = accounts[0];
-        _isConnected = true;
-        
-        // Get current chain ID
-        final chainId = await js.context['ethereum']
-            .callMethod('request', [{'method': 'eth_chainId'}]);
-        _currentChainId = int.parse(chainId.toString());
-        
-        // Initialize Web3 client
-        _web3client = Web3Client(
-          'https://ethereum.publicnode.com', // Default RPC URL, will be updated based on chain
-          Client(),
-        );
-        
-        notifyListeners();
-        return true;
-      }
-      return false;
+      _currentAddress = result.address;
+      _currentChainId = result.chainId;
+      _isConnected = true;
+      
+      notifyListeners();
+      return true;
     } catch (e) {
       print('Error connecting to MetaMask: $e');
       return false;
     }
   }
   
-  // Switch network if needed
+  // Switch network
   Future<bool> switchNetwork(int chainId) async {
     try {
-      await js.context['ethereum'].callMethod('request', [{
-        'method': 'wallet_switchEthereumChain',
-        'params': [{'chainId': '0x${chainId.toRadixString(16)}'}],
-      }]);
-      return true;
+      // Convert chain ID to hex format (e.g., 0x1 for Ethereum Mainnet)
+      final chainIdHex = '0x${chainId.toRadixString(16)}';
+      final result = await promiseToFuture<bool>(switchNetwork(chainId));
+      return result;
     } catch (e) {
       print('Error switching network: $e');
       return false;
     }
   }
   
-  // Token Contract Functions
+  // TOKEN CONTRACT FUNCTIONS
   
   // Get token name
   Future<String> getTokenName() async {
-    if (!_isConnected || _web3client == null || _tokenContract == null) {
+    if (!_isConnected) {
       throw Exception('Not connected to blockchain');
     }
     
-    final nameFunction = _tokenContract!.function('name');
-    final result = await _web3client!.call(
-      contract: _tokenContract!,
-      function: nameFunction,
-      params: [],
-    );
-    
-    return result[0].toString();
+    try {
+      final result = await promiseToFuture<String>(
+        callContractFunction(_tokenContractAddress, _tokenContractAbi, 'name', null)
+      );
+      return result;
+    } catch (e) {
+      throw Exception('Failed to get token name: $e');
+    }
   }
   
   // Get token symbol
   Future<String> getTokenSymbol() async {
-    if (!_isConnected || _web3client == null || _tokenContract == null) {
+    if (!_isConnected) {
       throw Exception('Not connected to blockchain');
     }
     
-    final symbolFunction = _tokenContract!.function('symbol');
-    final result = await _web3client!.call(
-      contract: _tokenContract!,
-      function: symbolFunction,
-      params: [],
-    );
-    
-    return result[0].toString();
+    try {
+      final result = await promiseToFuture<String>(
+        callContractFunction(_tokenContractAddress, _tokenContractAbi, 'symbol', null)
+      );
+      return result;
+    } catch (e) {
+      throw Exception('Failed to get token symbol: $e');
+    }
   }
   
-  // Get token balance for the current account
+  // Get token balance for current account
   Future<BigInt> getTokenBalance() async {
-    if (!_isConnected || _web3client == null || _tokenContract == null || _currentAddress == null) {
+    if (!_isConnected || _currentAddress == null) {
       throw Exception('Not connected to blockchain');
     }
     
-    final balanceFunction = _tokenContract!.function('balanceOf');
-    final result = await _web3client!.call(
-      contract: _tokenContract!,
-      function: balanceFunction,
-      params: [EthereumAddress.fromHex(_currentAddress!)],
-    );
-    
-    return result[0] as BigInt;
+    try {
+      final result = await promiseToFuture<String>(
+        callContractFunction(_tokenContractAddress, _tokenContractAbi, 'balanceOf', jsify([_currentAddress]))
+      );
+      return BigInt.parse(result);
+    } catch (e) {
+      throw Exception('Failed to get token balance: $e');
+    }
   }
   
   // Buy tokens
   Future<String> buyTokens(BigInt weiAmount) async {
-    if (!_isConnected || _web3client == null || _tokenContract == null || _currentAddress == null) {
+    if (!_isConnected || _currentAddress == null) {
       throw Exception('Not connected to blockchain');
     }
     
-    final buyTokensFunction = _tokenContract!.function('buyTokens');
-    final transaction = Transaction(
-      from: EthereumAddress.fromHex(_currentAddress!),
-      to: _tokenContract!.address,
-      value: EtherAmount.inWei(weiAmount),
-    );
-    
-    // Execute the transaction via MetaMask
-    final txHash = await js.context['ethereum'].callMethod('request', [{
-      'method': 'eth_sendTransaction',
-      'params': [{
-        'from': _currentAddress,
-        'to': _tokenContract!.address.hex,
-        'value': '0x${weiAmount.toRadixString(16)}',
-        'data': _getEncodedFunctionData(buyTokensFunction, []),
-      }]
-    }]);
-    
-    return txHash;
+    try {
+      final txHash = await promiseToFuture<String>(
+        sendContractTransaction(
+          _tokenContractAddress, 
+          _tokenContractAbi, 
+          'buyTokens', 
+          jsify([]), 
+          '0x${weiAmount.toRadixString(16)}'
+        )
+      );
+      return txHash;
+    } catch (e) {
+      throw Exception('Failed to buy tokens: $e');
+    }
   }
   
   // Transfer tokens
   Future<String> transferTokens(String recipient, BigInt amount) async {
-    if (!_isConnected || _web3client == null || _tokenContract == null || _currentAddress == null) {
+    if (!_isConnected || _currentAddress == null) {
       throw Exception('Not connected to blockchain');
     }
     
-    final transferFunction = _tokenContract!.function('transfer');
-    
-    // Execute the transaction via MetaMask
-    final txHash = await js.context['ethereum'].callMethod('request', [{
-      'method': 'eth_sendTransaction',
-      'params': [{
-        'from': _currentAddress,
-        'to': _tokenContract!.address.hex,
-        'data': _getEncodedFunctionData(transferFunction, [
-          EthereumAddress.fromHex(recipient),
-          amount
-        ]),
-      }]
-    }]);
-    
-    return txHash;
+    try {
+      final txHash = await promiseToFuture<String>(
+        sendContractTransaction(
+          _tokenContractAddress, 
+          _tokenContractAbi, 
+          'transfer', 
+          jsify([recipient, amount.toString()]),
+          null
+        )
+      );
+      return txHash;
+    } catch (e) {
+      throw Exception('Failed to transfer tokens: $e');
+    }
   }
   
-  // Helper to encode function data for MetaMask transactions
-  String _getEncodedFunctionData(ContractFunction function, List<dynamic> params) {
-    final encodedFunction = function.encodeCall(params);
-    return '0x${bytesToHex(encodedFunction)}';
+  // MARKET CONTRACT FUNCTIONS
+  
+  // List energy for sale
+  Future<String> listEnergyForSale(BigInt amount, BigInt pricePerUnit) async {
+    if (!_isConnected || _currentAddress == null) {
+      throw Exception('Not connected to blockchain');
+    }
+    
+    try {
+      final txHash = await promiseToFuture<String>(
+        sendContractTransaction(
+          _marketContractAddress, 
+          _marketContractAbi, 
+          'listEnergyForSale', 
+          jsify([amount.toString(), pricePerUnit.toString()]),
+          null
+        )
+      );
+      return txHash;
+    } catch (e) {
+      throw Exception('Failed to list energy for sale: $e');
+    }
   }
   
-  // Market Contract Functions would be implemented here
-  // These would include functions like:
-  // - List energy for sale
-  // - Buy energy
-  // - Get market listings
-  // etc.
+  // Buy energy from market
+  Future<String> buyEnergy(BigInt listingId, BigInt amount) async {
+    if (!_isConnected || _currentAddress == null) {
+      throw Exception('Not connected to blockchain');
+    }
+    
+    try {
+      final txHash = await promiseToFuture<String>(
+        sendContractTransaction(
+          _marketContractAddress, 
+          _marketContractAbi, 
+          'buyEnergy', 
+          jsify([listingId.toString(), amount.toString()]),
+          null
+        )
+      );
+      return txHash;
+    } catch (e) {
+      throw Exception('Failed to buy energy: $e');
+    }
+  }
+  
+  // Get market listing count
+  Future<List<String>> getActiveOffers() async {
+    if (!_isConnected) {
+      throw Exception('Not connected to blockchain');
+    }
+    
+    try {
+      final result = await promiseToFuture<dynamic>(
+        callContractFunction(_marketContractAddress, _marketContractAbi, 'getActiveOffers', null)
+      );
+      debugPrint(result.toString());
+      // Convert the JavaScript array to a Dart list of strings
+      return List<String>.from(result);
+    } catch (e) {
+      throw Exception('Failed to get active offers: $e');
+    }
+  }
+  
+  // Get market listing details by ID
+  Future<Map<String, dynamic>> getOfferDetails(String offerId) async {
+  if (!_isConnected) {
+    throw Exception('Not connected to blockchain');
+  }
+
+  try {
+    final result = await promiseToFuture<dynamic>(
+      callContractFunction(_marketContractAddress, _marketContractAbi, 'getOfferDetails', jsify([offerId]))
+    );
+
+    // Parse the result based on your contract's return structure
+    return {
+      'id': result[0], // bytes32
+      'creator': result[1], // address
+      'creatorUsername': result[2], // string
+      'offerType': int.parse(result[3].toString()), // OfferType enum (0 for Sell, 1 for Buy)
+      'energyAmount': BigInt.parse(result[4].toString()), // uint256
+      'pricePerUnit': BigInt.parse(result[5].toString()), // uint256
+      'totalPrice': BigInt.parse(result[6].toString()), // uint256
+      'startTime': BigInt.parse(result[7].toString()), // uint256 (timestamp)
+      'endTime': BigInt.parse(result[8].toString()), // uint256 (timestamp)
+      'status': int.parse(result[9].toString()), // OfferStatus enum (e.g., 0 for Active)
+      'counterparty': result[10], // address
+      'counterpartyUsername': result[11], // string
+      'createdAt': BigInt.parse(result[12].toString()), // uint256 (timestamp)
+    };
+  } catch (e) {
+    throw Exception('Failed to get listing: $e');
+  }
+}
+
+  // Create energy offer
+  Future<String> createOffer(
+    int offerType,
+    BigInt energyAmount,
+    BigInt pricePerUnit,
+    BigInt startTime,
+    BigInt endTime
+  ) async {
+    if (!_isConnected || _currentAddress == null) {
+      throw Exception('Not connected to blockchain');
+    }
+    
+    try {
+      debugPrint(_marketContractAbi.toString());
+      final txHash = await promiseToFuture<String>(
+        sendContractTransaction(
+          _marketContractAddress,
+          _marketContractAbi,
+          'createOffer',
+          jsify([
+            offerType,
+            energyAmount.toString(),
+            pricePerUnit.toString(),
+            startTime.toString(),
+            endTime.toString()
+          ]),
+          null
+        )
+      );
+      return txHash;
+    } catch (e) {
+      throw Exception('Failed to create energy offer: $e');
+    }
+  }
+
+  Future<void> _initializeDapp() async {
+  // First check if there's an existing connection
+  try {
+    final result = await promiseToFuture(
+      checkConnectedState()
+    );
+    
+    if (result != null) {
+      // MetaMask is already connected from a previous session
+      _currentAddress = result.address as String;
+      _currentChainId = result.chainId as int;
+      _isConnected = true;
+      notifyListeners();
+    }
+  } catch (e) {
+    debugPrint('Failed to check for existing connection: $e');
+  }
+  
+  // Listen for account changes
+  html.window.addEventListener('accountsChanged', (event) {
+    final accounts = (event as html.CustomEvent).detail;
+    if (accounts is List && accounts.isEmpty) {
+      // User disconnected their wallet
+      _isConnected = false;
+      _currentAddress = null;
+    } else if (accounts is List && accounts.isNotEmpty) {
+      // User switched accounts
+      _currentAddress = accounts[0];
+      _isConnected = true;
+    }
+    notifyListeners();
+  });
+  
+  // Listen for chain changes
+  html.window.addEventListener('chainChanged', (event) {
+    final chainId = (event as html.CustomEvent).detail;
+    _currentChainId = int.parse(chainId, radix: 16);
+    notifyListeners();
+  });
+}
 }
