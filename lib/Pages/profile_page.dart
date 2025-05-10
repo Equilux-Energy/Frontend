@@ -6,6 +6,7 @@ import '../Services/user_service.dart';
 import '../Services/metamask.dart';
 import '../Widgets/animated_background.dart';
 import '../Widgets/animated_background_light.dart';
+import '../Services/blockchain_service.dart';
 
 class ProfilePage extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -44,6 +45,13 @@ class _ProfilePageState extends State<ProfilePage> {
   late TextEditingController _walletAddressController;
   late TextEditingController _productionCapacityController;
   late TextEditingController _userIdController;
+
+  // Add BlockchainService
+  late final BlockchainService _blockchainService;
+  bool _isWalletConnected = false;
+  String? _currentWalletAddress;
+  String? _currentBalance;
+  int? _currentChainId;
 
   @override
   void initState() {
@@ -120,6 +128,15 @@ class _ProfilePageState extends State<ProfilePage> {
     _walletAddressController = TextEditingController(text: _userData['web_3_wallet_address']);
     _productionCapacityController = TextEditingController(text: _userData['total_production_capacity']);
     _userIdController = TextEditingController(text: userId);
+
+    // Initialize blockchain service
+    _blockchainService = BlockchainService();
+    _blockchainService.addListener(_onBlockchainStateChanged);
+    
+    // Check if wallet is already connected (persistence)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkWalletConnection();
+    });
   }
   
   @override
@@ -139,6 +156,7 @@ class _ProfilePageState extends State<ProfilePage> {
     _walletAddressController.dispose();
     _productionCapacityController.dispose();
     _userIdController.dispose();
+    _blockchainService.removeListener(_onBlockchainStateChanged);
     super.dispose();
   }
 
@@ -716,41 +734,42 @@ class _ProfilePageState extends State<ProfilePage> {
   
   Widget _buildWalletButton(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    return Consumer<MetaMaskProvider>(
-      builder: (context, provider, child) {
-        if (provider.isConnected && provider.isInOperatingChain) {
-          return ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
+    
+    if (_isWalletConnected) {
+      // Connected state
+      String displayText = _currentBalance ?? '\$0.00';
+      
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+        ),
+        onPressed: () {
+          _showWalletOptions(context);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5C005C), Color(0xFF240029)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            onPressed: () {},
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-              child: Text(
-                '${provider.currentBalance} USD',
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-          );
-        } else if (provider.isEnabled) {
-          return IconButton(
-            icon: Icon(Icons.wallet, color: themeProvider.textColor),
-            onPressed: () => context.read<MetaMaskProvider>().connect(),
-          );
-        } else {
-          return const SizedBox.shrink();
-        }
-      },
-    );
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          child: Text(
+            displayText,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    } else {
+      // Disconnected state
+      return IconButton(
+        icon: Icon(Icons.wallet, color: themeProvider.textColor),
+        onPressed: _connectWallet,
+      );
+    }
   }
 
   Widget _buildMobileWalletButton(BuildContext context) {
@@ -1260,7 +1279,6 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 }
-}
 
 // Add this as a shared utility method or extension
 Future<void> showChangePasswordDialog(BuildContext context) async {
@@ -1441,4 +1459,97 @@ Future<void> showChangePasswordDialog(BuildContext context) async {
       );
     },
   );
+}
+
+  // Add these methods
+  Future<void> _checkWalletConnection() async {
+    final isConnected = _blockchainService.isConnected;
+    
+    if (isConnected) {
+      setState(() {
+        _isWalletConnected = true;
+        _currentWalletAddress = _blockchainService.currentAddress;
+        _currentBalance = _blockchainService.currentBalance;
+        _currentChainId = _blockchainService.currentChainId;
+      });
+    }
+  }
+  
+  void _onBlockchainStateChanged() {
+    setState(() {
+      _isWalletConnected = _blockchainService.isConnected;
+      _currentWalletAddress = _blockchainService.currentAddress;
+      _currentBalance = _blockchainService.currentBalance;
+      _currentChainId = _blockchainService.currentChainId;
+    });
+  }
+  
+  Future<void> _connectWallet() async {
+    try {
+      final success = await _blockchainService.connectWallet();
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Wallet connected successfully'))
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to connect wallet'))
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error connecting wallet: $e'))
+      );
+    }
+  }
+  
+  // Add wallet options menu
+  void _showWalletOptions(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text('Wallet Options', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Address: ${_currentWalletAddress ?? 'Not connected'}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Network ID: ${_currentChainId ?? 'Unknown'}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Copy Address', style: TextStyle(color: Colors.purple)),
+            onPressed: () {
+              if (_currentWalletAddress != null) {
+                // Copy to clipboard functionality would go here
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Address copied to clipboard')),
+                );
+              }
+            },
+          ),
+          TextButton(
+            child: const Text('Switch to Holesky', style: TextStyle(color: Colors.purple)),
+            onPressed: () {
+            },
+          ),
+          TextButton(
+            child: const Text('Close', style: TextStyle(color: Colors.white)),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
 }

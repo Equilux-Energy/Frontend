@@ -1,5 +1,6 @@
 // home_page.dart
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../Services/chart_card.dart';
 import '../Services/cognito_service.dart';
@@ -8,8 +9,10 @@ import '../Services/theme_provider.dart';
 import '../Services/user_service.dart';
 import '../Widgets/animated_background.dart';
 import 'package:fl_chart/fl_chart.dart' as fl_chart;
+import '../Services/blockchain_service.dart';
 
 import '../Widgets/animated_background_light.dart';
+import '../Widgets/long_term_consumption_chart.dart';
 
 class HomePage extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -23,10 +26,95 @@ class _HomePageState extends State<HomePage> {
   final _userService = UserService();
   bool _showProfileIncompleteMessage = false;
   
+  // Add BlockchainService
+  late final BlockchainService _blockchainService;
+  bool _isWalletConnected = false;
+  String? _currentWalletAddress;
+  String? _currentBalance;
+  int? _currentChainId;
+
+  // Add these variables to your _HomePageState class
+  bool _isLoadingPredictions = false;
+  String? _predictionError;
+  Map<String, double>? _consumptionPredictions;
+
+  // Add these with your other state variables
+  bool _isLoadingProduction = false;
+  String? _productionError;
+  Map<String, dynamic>? _productionData;
+
+  // Add these with your other state variables
+  bool _isLoadingEnergyHistory = false;
+  String? _energyHistoryError;
+  List<dynamic>? _energyHistoryData;
+  int _energyHistoryLimit = 24;  // Default to 24 hours
+  
   @override
   void initState() {
     super.initState();
     _showProfileIncompleteMessage = _userService.isProfileIncomplete(widget.userData);
+    
+    // Initialize blockchain service
+    _blockchainService = BlockchainService();
+    _blockchainService.addListener(_onBlockchainStateChanged);
+    
+    // Check if wallet is already connected (persistence)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkWalletConnection();
+    });
+
+      _fetchConsumptionPredictions();
+      _fetchProductionData();
+      _fetchEnergyHistoryData();
+  }
+  
+  @override
+  void dispose() {
+    _blockchainService.removeListener(_onBlockchainStateChanged);
+    super.dispose();
+  }
+  
+  // Add these methods
+  Future<void> _checkWalletConnection() async {
+    final isConnected = _blockchainService.isConnected;
+    
+    if (isConnected) {
+      setState(() {
+        _isWalletConnected = true;
+        _currentWalletAddress = _blockchainService.currentAddress;
+        _currentBalance = _blockchainService.currentBalance;
+        _currentChainId = _blockchainService.currentChainId;
+      });
+    }
+  }
+  
+  void _onBlockchainStateChanged() {
+    setState(() {
+      _isWalletConnected = _blockchainService.isConnected;
+      _currentWalletAddress = _blockchainService.currentAddress;
+      _currentBalance = _blockchainService.currentBalance;
+      _currentChainId = _blockchainService.currentChainId;
+    });
+  }
+  
+  Future<void> _connectWallet() async {
+    try {
+      final success = await _blockchainService.connectWallet();
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Wallet connected successfully'))
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to connect wallet'))
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error connecting wallet: $e'))
+      );
+    }
   }
   
   @override
@@ -201,86 +289,128 @@ class _HomePageState extends State<HomePage> {
   
   Widget _buildWalletButton(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
-    return Consumer<MetaMaskProvider>(
-      builder: (context, provider, child) {
-        if (provider.isConnected && !provider.isInOperatingChain) {
-          return ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
+    
+    if (_isWalletConnected) {
+      // Connected state
+      String displayText = _currentBalance!.substring(0,6) ?? '\$0.00';
+      
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+        ),
+        onPressed: () {
+          // Show wallet options menu
+          _showWalletOptions(context);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5C005C), Color(0xFF240029)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            onPressed: () {},
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-              child: Text(
-                '${provider.currentBalance} USD',
-                style: const TextStyle(color: Colors.white),
-              ),
-            ),
-          );
-        } else if (provider.isEnabled) {
-          return IconButton(
-            icon: Icon(Icons.wallet, color: themeProvider.textColor),
-            onPressed: () {
-              context.read<MetaMaskProvider>().connect().then((_) {
-                // Debug prints
-                debugPrint("Connected: ${context.read<MetaMaskProvider>().isConnected}");
-                debugPrint("In operating chain: ${context.read<MetaMaskProvider>().isInOperatingChain}");
-                debugPrint("Chain ID: ${context.read<MetaMaskProvider>().currentChain}");
-                debugPrint("Balance: ${context.read<MetaMaskProvider>().currentBalance}");
-              });
-            },
-          );
-        } else {
-          return const SizedBox.shrink();
-        }
-      },
-    );
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          child: Text(
+            displayText,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    } else {
+      // Disconnected state
+      return IconButton(
+        icon: Icon(Icons.wallet, color: themeProvider.textColor),
+        onPressed: _connectWallet,
+      );
+    }
   }
 
   Widget _buildMobileWalletButton(BuildContext context) {
-    return Consumer<MetaMaskProvider>(
-      builder: (context, provider, child) {
-        if (provider.isConnected && provider.isInOperatingChain) {
-          return ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              shadowColor: Colors.transparent,
+    // Similar implementation as _buildWalletButton but for mobile view
+    if (_isWalletConnected) {
+      String displayText = _currentBalance ?? '\$0.00';
+      
+      return ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+        ),
+        onPressed: () {
+          _showWalletOptions(context);
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: const LinearGradient(
+              colors: [Color(0xFF5C005C), Color(0xFF240029)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            onPressed: () {},
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF5C005C), Color(0xFF240029)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-              child: Text(
-                '${provider.currentBalance} USD',
-                style: const TextStyle(color: Colors.white),
-              ),
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          child: Text(
+            displayText,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    } else {
+      return IconButton(
+        icon: const Icon(Icons.wallet, color: Colors.white),
+        onPressed: _connectWallet,
+      );
+    }
+  }
+  
+  // Add wallet options menu
+  void _showWalletOptions(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text('Wallet Options', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Address: ${_currentWalletAddress ?? 'Not connected'}',
+              style: const TextStyle(color: Colors.white70),
             ),
-          );
-        } else if (provider.isEnabled) {
-          return IconButton(
-            icon: const Icon(Icons.wallet, color: Colors.white),
-            onPressed: () => context.read<MetaMaskProvider>().connect(),
-          );
-        } else {
-          return const SizedBox.shrink();
-        }
-      },
+            const SizedBox(height: 8),
+            Text(
+              'Network ID: ${_currentChainId ?? 'Unknown'}',
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Copy Address', style: TextStyle(color: Colors.purple)),
+            onPressed: () {
+              if (_currentWalletAddress != null) {
+                // Copy to clipboard functionality would go here
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Address copied to clipboard')),
+                );
+              }
+            },
+          ),
+          TextButton(
+            child: const Text('Switch to Holesky', style: TextStyle(color: Colors.purple)),
+            onPressed: () {
+            },
+          ),
+          TextButton(
+            child: const Text('Close', style: TextStyle(color: Colors.white)),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
     );
   }
   
@@ -530,34 +660,58 @@ Widget _buildStatsCard(BuildContext context, {
 
   
   Widget _buildChartsSection(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWideScreen = screenWidth > 1200;
-    
-    if (isWideScreen) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 6,
-            child: _buildEnergyConsumptionChart(),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 4,
-            child: _buildTokenDistributionChart(context),
-          ),
-        ],
-      );
-    } else {
-      return Column(
-        children: [
-          _buildEnergyConsumptionChart(),
-          const SizedBox(height: 16),
-          _buildTokenDistributionChart(context),
-        ],
-      );
-    }
+  final screenWidth = MediaQuery.of(context).size.width;
+  final isWideScreen = screenWidth > 1200;
+  
+  if (isWideScreen) {
+    return Column(
+      children: [
+        _buildEnergyHistoryCard(), // Add this line at the top
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 6,
+              child: const LongTermConsumptionChart(),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 4,
+              child: Column(
+                children: [
+                  _buildProductionPredictionCard(),
+                  const SizedBox(height: 16),
+                  _buildTokenDistributionChart(context),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 4,
+              child: _buildConsumptionPredictionCard(),
+            ),
+          ],
+        ),
+      ],
+    );
+  } else {
+    return Column(
+      children: [
+        _buildEnergyHistoryCard(), // Add this line at the top
+        const SizedBox(height: 16),
+        LongTermConsumptionChart(),
+        const SizedBox(height: 16),
+        _buildTokenDistributionChart(context),
+        const SizedBox(height: 16),
+        _buildConsumptionPredictionCard(),
+        const SizedBox(height: 16),
+        _buildProductionPredictionCard(),
+      ],
+    );
   }
+}
+
   
   Widget _buildEnergyConsumptionChart() {
     return Container(
@@ -797,8 +951,7 @@ Widget _buildStatsCard(BuildContext context, {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.black.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
+          borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -894,4 +1047,839 @@ Widget _buildStatsCard(BuildContext context, {
       ),
     );
   }
+
+  // Add this method to your _HomePageState class
+  Future<void> _fetchConsumptionPredictions() async {
+    if (_isLoadingPredictions) return;
+    
+    setState(() {
+      _isLoadingPredictions = true;
+      _predictionError = null;
+    });
+    
+    try {
+      final predictions = await CognitoService().getShortTermConsumptionPrediction();
+      
+      setState(() {
+        _consumptionPredictions = predictions;
+        _isLoadingPredictions = false;
+      });
+    } catch (e) {
+      setState(() {
+        _predictionError = e.toString();
+        _isLoadingPredictions = false;
+      });
+    }
+  }
+  Widget _buildConsumptionPredictionCard() {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  // Get the current time to calculate hour ranges
+  final now = DateTime.now();
+  
+  // Function to format hour ranges from "Hour X" labels
+  String formatHourRange(String hourLabel) {
+    // Extract the hour number from the label (e.g., "Hour 1" -> 1)
+    final hourMatch = RegExp(r'Hour (\d+)').firstMatch(hourLabel);
+    if (hourMatch != null) {
+      final hourOffset = int.parse(hourMatch.group(1)!);
+      
+      // Calculate the start and end times
+      final startTime = DateTime(
+        now.year, 
+        now.month, 
+        now.day, 
+        now.hour + hourOffset - 1
+      );
+      
+      final endTime = DateTime(
+        now.year, 
+        now.month, 
+        now.day, 
+        now.hour + hourOffset
+      );
+      
+      // Format as "HH:00 - HH:00"
+      return "${DateFormat('HH:00').format(startTime)} - ${DateFormat('HH:00').format(endTime)}";
+    }
+    
+    return hourLabel; // Return original if no match
+  }
+  
+  return Card(
+    elevation: 8,
+    shadowColor: Colors.black,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    child: Container(
+      decoration: BoxDecoration(
+        gradient: themeProvider.cardGradient,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Short-Term Consumption Prediction',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.textColor,
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.refresh, color: themeProvider.textColorSecondary),
+                onPressed: _fetchConsumptionPredictions,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_isLoadingPredictions)
+            const Center(
+              child: CircularProgressIndicator(color: Colors.purple),
+            )
+          else if (_predictionError != null)
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red, size: 40),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Failed to load prediction data',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  TextButton(
+                    onPressed: _fetchConsumptionPredictions,
+                    child: const Text('Try Again', style: TextStyle(color: Colors.purple)),
+                  )
+                ],
+              ),
+            )
+          else if (_consumptionPredictions == null || _consumptionPredictions!.isEmpty)
+            Center(
+              child: Text(
+                'No prediction data available',
+                style: TextStyle(color: themeProvider.textColorSecondary),
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Table(
+                border: TableBorder.all(
+                  color: Colors.purple.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withOpacity(0.2),
+                    ),
+                    children: [
+                      TableCell(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Text(
+                            'Time Period',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: themeProvider.textColor,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                      TableCell(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Text(
+                            'Predicted (kWh)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: themeProvider.textColor,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  for (var entry in _consumptionPredictions!.entries)
+                    TableRow(
+                      children: [
+                        TableCell(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Text(
+                              formatHourRange(entry.key),
+                              style: TextStyle(color: themeProvider.textColorSecondary),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        TableCell(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Text(
+                              entry.value.toStringAsFixed(2),
+                              style: TextStyle(
+                                color: themeProvider.textColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            'Forecast updated: ${DateFormat('HH:mm, MMM d').format(now)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: themeProvider.textColorSecondary,
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.left,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+  // Add this method to your _HomePageState class
+  Future<void> _fetchProductionData() async {
+    if (_isLoadingProduction) return;
+    
+    setState(() {
+      _isLoadingProduction = true;
+      _productionError = null;
+    });
+    
+    try {
+      final data = await CognitoService().getProductionPrediction();
+      
+      setState(() {
+        _productionData = data;
+        _isLoadingProduction = false;
+      });
+    } catch (e) {
+      setState(() {
+        _productionError = e.toString();
+        _isLoadingProduction = false;
+      });
+    }
+  }
+
+  Widget _buildProductionPredictionCard() {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  // Get the current time to calculate hour ranges
+  final now = DateTime.now();
+  
+  // Function to format hour ranges from "Hour X" labels
+  String formatHourRange(String hourLabel) {
+    // Extract the hour number from the label (e.g., "Hour 1" -> 1)
+    final hourMatch = RegExp(r'Hour (\d+)').firstMatch(hourLabel);
+    if (hourMatch != null) {
+      final hourOffset = int.parse(hourMatch.group(1)!);
+      
+      // Calculate the start and end times
+      final startTime = DateTime(
+        now.year, 
+        now.month, 
+        now.day, 
+        now.hour + hourOffset - 1
+      );
+      
+      final endTime = DateTime(
+        now.year, 
+        now.month, 
+        now.day, 
+        now.hour + hourOffset
+      );
+      
+      // Format as "HH:00 - HH:00"
+      return "${DateFormat('HH:00').format(startTime)} - ${DateFormat('HH:00').format(endTime)}";
+    }
+    
+    return hourLabel; // Return original if no match
+  }
+  
+  return Card(
+    elevation: 8,
+    shadowColor: Colors.black,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    child: Container(
+      decoration: BoxDecoration(
+        gradient: themeProvider.cardGradient,
+        borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Energy Production Prediction',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.textColor,
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.refresh, color: themeProvider.textColorSecondary),
+                onPressed: _fetchProductionData,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_isLoadingProduction)
+            const Center(
+              child: CircularProgressIndicator(color: Colors.purple),
+            )
+          else if (_productionError != null)
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red, size: 40),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Failed to load production data',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  TextButton(
+                    onPressed: _fetchProductionData,
+                    child: const Text('Try Again', style: TextStyle(color: Colors.purple)),
+                  )
+                ],
+              ),
+            )
+          else if (_productionData == null || !_productionData!.containsKey('predictions'))
+            Center(
+              child: Text(
+                'No production data available',
+                style: TextStyle(color: themeProvider.textColorSecondary),
+              ),
+            )
+          else
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Table(
+                border: TableBorder.all(
+                  color: Colors.purple.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withOpacity(0.2),
+                    ),
+                    children: [
+                      TableCell(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Text(
+                            'Time Period',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: themeProvider.textColor,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                      TableCell(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Text(
+                            'Predicted (kWh)',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: themeProvider.textColor,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  for (var hourLabel in (_productionData!['predictions'] as Map).keys)
+                    TableRow(
+                      children: [
+                        TableCell(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Text(
+                              formatHourRange(hourLabel.toString()),
+                              style: TextStyle(color: themeProvider.textColorSecondary),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                        TableCell(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Text(
+                              (_productionData!['predictions'][hourLabel] as num).toStringAsFixed(2),
+                              style: TextStyle(
+                                color: themeProvider.textColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            'Forecast updated: ${DateFormat('HH:mm, MMM d').format(now)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: themeProvider.textColorSecondary,
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.left,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Add this method to your _HomePageState class
+Future<void> _fetchEnergyHistoryData() async {
+  if (_isLoadingEnergyHistory) return;
+  
+  setState(() {
+    _isLoadingEnergyHistory = true;
+    _energyHistoryError = null;
+  });
+  
+  try {
+    final data = await CognitoService().getEnergyHistoryData(limit: _energyHistoryLimit);
+    
+    setState(() {
+      _energyHistoryData = data;
+      _isLoadingEnergyHistory = false;
+    });
+  } catch (e) {
+    setState(() {
+      _energyHistoryError = e.toString();
+      _isLoadingEnergyHistory = false;
+    });
+  }
+}
+
+// Helper methods for the energy history chart
+List<fl_chart.FlSpot> _getConsumptionSpots() {
+  if (_energyHistoryData == null || _energyHistoryData!.isEmpty) return [];
+  
+  // Sort the data by timestamp (oldest first)
+  _energyHistoryData!.sort((a, b) {
+    DateTime timestampA = DateTime.parse(a['timestamp']);
+    DateTime timestampB = DateTime.parse(b['timestamp']);
+    return timestampA.compareTo(timestampB);
+  });
+  
+  // Convert to FlSpot list
+  List<fl_chart.FlSpot> spots = [];
+  for (int i = 0; i < _energyHistoryData!.length; i++) {
+    final item = _energyHistoryData![i];
+    final consumptionStr = item['messageData']['consumption']['S'];
+    double consumption = double.tryParse(consumptionStr) ?? 0;
+    spots.add(fl_chart.FlSpot(i.toDouble(), consumption));
+  }
+  
+  return spots;
+}
+
+List<fl_chart.FlSpot> _getProductionSpots() {
+  if (_energyHistoryData == null || _energyHistoryData!.isEmpty) return [];
+  
+  // Sort the data by timestamp (oldest first)
+  _energyHistoryData!.sort((a, b) {
+    DateTime timestampA = DateTime.parse(a['timestamp']);
+    DateTime timestampB = DateTime.parse(b['timestamp']);
+    return timestampA.compareTo(timestampB);
+  });
+  
+  // Convert to FlSpot list
+  List<fl_chart.FlSpot> spots = [];
+  for (int i = 0; i < _energyHistoryData!.length; i++) {
+    final item = _energyHistoryData![i];
+    final productionStr = item['messageData']['production']['S'];
+    double production = double.tryParse(productionStr) ?? 0;
+    spots.add(fl_chart.FlSpot(i.toDouble(), production));
+  }
+  
+  return spots;
+}
+
+List<String> _getTimeLabels() {
+  if (_energyHistoryData == null || _energyHistoryData!.isEmpty) return [];
+  
+  // Sort the data by timestamp (oldest first)
+  _energyHistoryData!.sort((a, b) {
+    DateTime timestampA = DateTime.parse(a['timestamp']);
+    DateTime timestampB = DateTime.parse(b['timestamp']);
+    return timestampA.compareTo(timestampB);
+  });
+  
+  // Get formatted time labels
+  List<String> labels = [];
+  for (var item in _energyHistoryData!) {
+    final timestampStr = item['timestamp'];
+    final timestamp = DateTime.parse(timestampStr);
+    labels.add(DateFormat('HH:mm').format(timestamp));
+  }
+  
+  return labels;
+}
+
+double _getMaxYValue() {
+  if (_energyHistoryData == null || _energyHistoryData!.isEmpty) return 5.0;
+  
+  double maxConsumption = 0;
+  double maxProduction = 0;
+  
+  for (var item in _energyHistoryData!) {
+    final consumptionStr = item['messageData']['consumption']['S'];
+    final productionStr = item['messageData']['production']['S'];
+    
+    double consumption = double.tryParse(consumptionStr) ?? 0;
+    double production = double.tryParse(productionStr) ?? 0;
+    
+    if (consumption > maxConsumption) maxConsumption = consumption;
+    if (production > maxProduction) maxProduction = production;
+  }
+  
+  double maxValue = maxConsumption > maxProduction ? maxConsumption : maxProduction;
+  return maxValue * 1.2; // Add 20% padding
+}
+
+Widget _buildEnergyHistoryCard() {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  
+  // Get the current time for the updated timestamp
+  final now = DateTime.now();
+  
+  return Card(
+    elevation: 8,
+    shadowColor: Colors.black,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    child: Container(
+      decoration: BoxDecoration(
+        gradient: themeProvider.cardGradient,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Energy History',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: themeProvider.textColor,
+                ),
+              ),
+              Row(
+                children: [
+                  DropdownButton<int>(
+                    value: _energyHistoryLimit,
+                    dropdownColor: themeProvider.isDarkMode ? Colors.black54 : Colors.white,
+                    style: TextStyle(color: themeProvider.textColor),
+                    underline: Container(
+                      height: 1,
+                      color: Colors.purple.withOpacity(0.5),
+                    ),
+                    onChanged: (int? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _energyHistoryLimit = newValue;
+                        });
+                        _fetchEnergyHistoryData();
+                      }
+                    },
+                    items: [
+                      DropdownMenuItem<int>(value: 2, child: Text('2 hours')),
+                      DropdownMenuItem<int>(value: 12, child: Text('12 hours')),
+                      DropdownMenuItem<int>(value: 24, child: Text('24 hours')),
+                      DropdownMenuItem<int>(value: 48, child: Text('48 hours')),
+                      DropdownMenuItem<int>(value: 72, child: Text('72 hours')),
+                    ],
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.refresh, color: themeProvider.textColorSecondary),
+                    onPressed: _fetchEnergyHistoryData,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_isLoadingEnergyHistory)
+            const Center(
+              child: SizedBox(
+                height: 250,
+                child: Center(
+                  child: CircularProgressIndicator(color: Colors.purple),
+                ),
+              ),
+            )
+          else if (_energyHistoryError != null)
+            Center(
+              child: SizedBox(
+                height: 250,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, color: Colors.red, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Could not load energy history',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _fetchEnergyHistoryData,
+                      child: const Text('Try Again', style: TextStyle(color: Colors.purple)),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_energyHistoryData == null || _energyHistoryData!.isEmpty)
+            Center(
+              child: SizedBox(
+                height: 250,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.bar_chart, color: themeProvider.textColorSecondary, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No energy history data available',
+                      style: TextStyle(color: themeProvider.textColorSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              height: 300,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 16, left: 8, top: 8, bottom: 32),
+                child: fl_chart.LineChart(
+                  fl_chart.LineChartData(
+                    gridData: fl_chart.FlGridData(
+                      show: true,
+                      drawHorizontalLine: true,
+                      drawVerticalLine: true,
+                      horizontalInterval: 1,
+                      getDrawingHorizontalLine: (value) => fl_chart.FlLine(
+                        color: Colors.grey.withOpacity(0.2),
+                        strokeWidth: 1,
+                      ),
+                      getDrawingVerticalLine: (value) => fl_chart.FlLine(
+                        color: Colors.grey.withOpacity(0.2),
+                        strokeWidth: 1,
+                      ),
+                    ),
+                    lineTouchData: fl_chart.LineTouchData(
+                      touchTooltipData: fl_chart.LineTouchTooltipData(
+                        getTooltipColor: (touchedSpot) => 
+                          touchedSpot.barIndex == 0 ? Colors.purple : Colors.green,
+                        getTooltipItems: (List<fl_chart.LineBarSpot> touchedSpots) {
+                          return touchedSpots.map((spot) {
+                            final type = spot.barIndex == 0 ? 'Consumption' : 'Production';
+                            final timeLabel = _getTimeLabels()[spot.x.toInt()];
+                            return fl_chart.LineTooltipItem(
+                              '$type: ${spot.y.toStringAsFixed(1)} kWh\n$timeLabel',
+                              TextStyle(color: Colors.white),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ),
+                    titlesData: fl_chart.FlTitlesData(
+                      leftTitles: fl_chart.AxisTitles(
+                        sideTitles: fl_chart.SideTitles(
+                          showTitles: true,
+                          reservedSize: 40,
+                          getTitlesWidget: (value, meta) {
+                            if (value == 0) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Text(
+                                value.toStringAsFixed(1),
+                                style: TextStyle(
+                                  color: themeProvider.textColorSecondary,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      bottomTitles: fl_chart.AxisTitles(
+                        sideTitles: fl_chart.SideTitles(
+                          showTitles: true,
+                          reservedSize: 30,
+                          getTitlesWidget: (value, meta) {
+                            final timeLabels = _getTimeLabels();
+                            // Show fewer x-axis labels for readability
+                            if (value.toInt() % (timeLabels.length > 12 ? 3 : 2) == 0 &&
+                                value.toInt() < timeLabels.length) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  timeLabels[value.toInt()],
+                                  style: TextStyle(
+                                    color: themeProvider.textColorSecondary,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          },
+                        ),
+                      ),
+                      topTitles: fl_chart.AxisTitles(
+                        sideTitles: fl_chart.SideTitles(showTitles: false),
+                      ),
+                      rightTitles: fl_chart.AxisTitles(
+                        sideTitles: fl_chart.SideTitles(showTitles: false),
+                      ),
+                    ),
+                    borderData: fl_chart.FlBorderData(
+                      show: true,
+                      border: Border(
+                        bottom: BorderSide(color: Colors.grey.withOpacity(0.4), width: 1),
+                        left: BorderSide(color: Colors.grey.withOpacity(0.4), width: 1),
+                      ),
+                    ),
+                    lineBarsData: [
+                      // Consumption line
+                      fl_chart.LineChartBarData(
+                        spots: _getConsumptionSpots(),
+                        isCurved: true,
+                        color: Colors.purple,
+                        barWidth: 3,
+                        isStrokeCapRound: true,
+                        dotData: fl_chart.FlDotData(
+                          show: _energyHistoryData!.length < 24, // Only show dots for smaller datasets
+                          getDotPainter: (spot, percent, barData, index) => fl_chart.FlDotCirclePainter(
+                            radius: 4,
+                            color: Colors.purple,
+                            strokeWidth: 2,
+                            strokeColor: Colors.white,
+                          ),
+                        ),
+                        belowBarData: fl_chart.BarAreaData(
+                          show: true,
+                          color: Colors.purple.withOpacity(0.15),
+                        ),
+                      ),
+                      // Production line
+                      fl_chart.LineChartBarData(
+                        spots: _getProductionSpots(),
+                        isCurved: true,
+                        color: Colors.green,
+                        barWidth: 3,
+                        isStrokeCapRound: true,
+                        dotData: fl_chart.FlDotData(
+                          show: _energyHistoryData!.length < 24, // Only show dots for smaller datasets
+                          getDotPainter: (spot, percent, barData, index) => fl_chart.FlDotCirclePainter(
+                            radius: 4,
+                            color: Colors.green,
+                            strokeWidth: 2,
+                            strokeColor: Colors.white,
+                          ),
+                        ),
+                        belowBarData: fl_chart.BarAreaData(
+                          show: true,
+                          color: Colors.green.withOpacity(0.15),
+                        ),
+                      ),
+                    ],
+                    minX: 0,
+                    maxX: (_energyHistoryData!.length - 1).toDouble(),
+                    minY: 0,
+                    maxY: _getMaxYValue(),
+                  ),
+                ),
+              ),
+            ),
+          if (!_isLoadingEnergyHistory && _energyHistoryError == null && 
+              _energyHistoryData != null && _energyHistoryData!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _buildEnergyLegendItem('Consumption', Colors.purple),
+                  const SizedBox(width: 24),
+                  _buildEnergyLegendItem('Production', Colors.green),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            'Updated: ${DateFormat('HH:mm, MMM d').format(now)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: themeProvider.textColorSecondary,
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.left,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildEnergyLegendItem(String label, Color color) {
+  return Row(
+    children: [
+      Container(
+        width: 16,
+        height: 16,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+        ),
+      ),
+      const SizedBox(width: 8),
+      Text(label, style: const TextStyle(color: Colors.white70)),
+    ],
+  );
+}
 }

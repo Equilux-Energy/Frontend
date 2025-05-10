@@ -687,6 +687,133 @@ Future<MessageResponse> getMessagesBetweenUsers(
       throw Exception('Error responding to trade offer: $e');
     }
   }
+
+  Future<Map<String, double>> getShortTermConsumptionPrediction() async {
+    try {
+      final token = await getIdToken();
+      
+      if (token == null) {
+        throw Exception('No ID token available');
+      }
+      
+      final response = await http.get(
+        Uri.parse('https://szct93rv72.execute-api.eu-west-1.amazonaws.com/Development/api/v1/consumption/short-term'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        
+        // Convert to Map<String, double>
+        final Map<String, double> predictions = {};
+        data.forEach((key, value) {
+          predictions[key] = value is double ? value : double.parse(value.toString());
+        });
+
+        debugPrint('Short-term consumption predictions: $predictions');
+        
+        return predictions;
+      } else {
+        throw Exception('Failed to load prediction data: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching consumption prediction: $e');
+    }
+  }
+
+  Future<Map<String, double>> getLongTermConsumptionPrediction() async {
+    try {
+      final token = await getIdToken();
+      
+      if (token == null) {
+        throw Exception('No ID token available');
+      }
+      
+      final response = await http.get(
+        Uri.parse('https://szct93rv72.execute-api.eu-west-1.amazonaws.com/Development/api/v1/consumption/long-term'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        
+        // Convert to Map<String, double>
+        final Map<String, double> predictions = {};
+        data.forEach((key, value) {
+          predictions[key] = value is double ? value : double.parse(value.toString());
+        });
+        
+        debugPrint('Long-term consumption predictions: $predictions');
+        return predictions;
+      } else {
+        throw Exception('Failed to load long-term prediction data: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching long-term consumption prediction: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> getProductionPrediction() async {
+    try {
+      final token = await getIdToken();
+      
+      if (token == null) {
+        throw Exception('No ID token available');
+      }
+      
+      final response = await http.get(
+        Uri.parse('https://szct93rv72.execute-api.eu-west-1.amazonaws.com/Development/api/v1/production'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        debugPrint('Production predictions: $data');
+        return data;
+      } else {
+        throw Exception('Failed to load production data: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching production data: $e');
+    }
+  }
+
+  Future<List<dynamic>> getEnergyHistoryData({int limit = 24}) async {
+    try {
+      final token = await getIdToken();
+      
+      if (token == null) {
+        throw Exception('No ID token available');
+      }
+      
+      final response = await http.get(
+        Uri.parse('https://szct93rv72.execute-api.eu-west-1.amazonaws.com/Development/api/v1/energy-data?limit=$limit'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json'
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        debugPrint('Energy history data: $data');
+        return data;
+      } else {
+        throw Exception('Failed to load energy history data: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching energy history data: $e');
+    }
+  }
 }
 
 class ChatConfig {
