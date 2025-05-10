@@ -127,6 +127,7 @@ class _TransactionPageState extends State<TransactionPage> {
   bool _isWalletConnected = false;
   String? _currentWalletAddress;
   int? _currentChainId;
+  String? _currentBalance;
 
   @override
   void initState() {
@@ -149,6 +150,7 @@ class _TransactionPageState extends State<TransactionPage> {
         _isWalletConnected = _blockchainService.isConnected;
         _currentWalletAddress = _blockchainService.currentAddress;
         _currentChainId = _blockchainService.currentChainId;
+        _currentBalance = _blockchainService.currentBalance;
         _isLoading = false;
       });
     } catch (e) {
@@ -167,6 +169,7 @@ class _TransactionPageState extends State<TransactionPage> {
     _isWalletConnected = isNowConnected;
     _currentWalletAddress = _blockchainService.currentAddress;
     _currentChainId = _blockchainService.currentChainId;
+    _currentBalance = _blockchainService.currentBalance;
   });
   
   // If wallet just got connected, load offers
@@ -195,6 +198,7 @@ class _TransactionPageState extends State<TransactionPage> {
         _isWalletConnected = true;
         _currentWalletAddress = _blockchainService.currentAddress;
         _currentChainId = _blockchainService.currentChainId;
+        _currentBalance = _blockchainService.currentBalance;
       });
       
       ScaffoldMessenger.of(context).showSnackBar(
@@ -858,7 +862,9 @@ class _TransactionPageState extends State<TransactionPage> {
     
     if (_isWalletConnected && _currentWalletAddress != null) {
       // Connected state
-      String displayAddress = '${_currentWalletAddress!.substring(0, 6)}...${_currentWalletAddress!.substring(_currentWalletAddress!.length - 4)}';
+      
+      debugPrint('Balance from page: $_currentBalance');
+      String displayAddress = _currentBalance!.substring(0,6);
       return ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,

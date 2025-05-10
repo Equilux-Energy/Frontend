@@ -87,10 +87,19 @@
             const chainId = await window.ethereum.request({
               method: 'eth_chainId'
             });
+
+            // Get the balance of the first account
+            const balance = await window.ethereum.request({
+              method: 'eth_getBalance',
+              params: [accounts[0], 'latest']
+            });
+
+            console.log('reBalance:', ethers.formatEther(balance));
             
             const result = {
               address: accounts[0],
-              chainId: parseInt(chainId, 16)
+              chainId: parseInt(chainId, 16),
+              balance: ethers.formatEther(balance)
             };
             
             window.dappLog.success('Existing MetaMask connection found:', result);
@@ -129,10 +138,18 @@
           const chainId = await window.ethereum.request({
             method: 'eth_chainId'
           });
+
+          const balance = await window.ethereum.request({
+            method: 'eth_getBalance',
+            params: [accounts[0], 'latest']
+          });
+
+          console.log('Balance:', ethers.formatEther(balance));
           
           const result = {
             address: accounts[0],
-            chainId: parseInt(chainId, 16)
+            chainId: parseInt(chainId, 16),
+            balance: ethers.formatEther(balance)
           };
           
           window.dappLog.success('Connected to MetaMask:', result);

@@ -43,6 +43,7 @@ class BlockchainService with ChangeNotifier {
   // Current connected account
   String? _currentAddress;
   int? _currentChainId;
+  String? _currentBalance;
   bool _isConnected = false;
   
   BlockchainService() {
@@ -54,6 +55,7 @@ class BlockchainService with ChangeNotifier {
   bool get isConnected => _isConnected;
   String? get currentAddress => _currentAddress;
   int? get currentChainId => _currentChainId;
+  String? get currentBalance => _currentBalance;
   
   // Initialize the service
   Future<void> initialize() async {
@@ -61,6 +63,8 @@ class BlockchainService with ChangeNotifier {
     if (!isMetaMaskInstalled()) {
       throw Exception('MetaMask is not installed');
     }
+
+    _initializeDapp();
     
     // Load contract ABIs and addresses
     await _loadContracts();
@@ -124,6 +128,7 @@ class BlockchainService with ChangeNotifier {
       
       _currentAddress = result.address;
       _currentChainId = result.chainId;
+      _currentBalance = result.balance;
       _isConnected = true;
       
       notifyListeners();
@@ -372,6 +377,10 @@ class BlockchainService with ChangeNotifier {
     }
   }
 
+  Future<void> initializeDapp() async {
+    _initializeDapp();
+  }
+
   Future<void> _initializeDapp() async {
   // First check if there's an existing connection
   try {
@@ -383,6 +392,8 @@ class BlockchainService with ChangeNotifier {
       // MetaMask is already connected from a previous session
       _currentAddress = result.address as String;
       _currentChainId = result.chainId as int;
+      _currentBalance = result.balance as String;
+      debugPrint('Balance from block: $_currentBalance');
       _isConnected = true;
       notifyListeners();
     }
