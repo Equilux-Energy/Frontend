@@ -2664,81 +2664,74 @@ Future<void> _loadUserAgreements() async {
     List<Map<String, dynamic>> agreements = [];
     
     // Loop through each agreement ID and get details
-    for (final offerId in agreementIds) {
+    for (final agreementId in agreementIds) {
       try {
-        final offerDetails = await _blockchainService.getOfferDetails(offerId);
-        
-        // Convert the offer details to match our UI format
-        final offerTypeInt = offerDetails['offerType'] as int;
-        final offerStatusInt = offerDetails['status'] as int;
-        
-        // Convert timestamp from seconds to milliseconds for DateTime
-        final createdAtDateTime = DateTime.fromMillisecondsSinceEpoch(
-          (offerDetails['createdAt'] as BigInt).toInt() * 1000
-        );
-        
-        // Convert blockchain values properly
-        final energyAmount = (offerDetails['energyAmount'] as BigInt).toDouble() / 1e18;
-        final pricePerUnit = (offerDetails['pricePerUnit'] as BigInt).toDouble() / 1e18;
-        
-        // Calculate USD price correctly
-        final totalPrice = energyAmount * pricePerUnit;
+        // Get full agreement details using the smart contract function
+        final agreementDetails = await _blockchainService.getAgreementDetails(agreementId);
         
         // Format addresses for display
-        final creatorAddress = offerDetails['creator'];
-        final creatorShortAddress = '${creatorAddress.substring(0, 6)}...${creatorAddress.substring(creatorAddress.length - 4)}';
+        final buyerAddress = agreementDetails['buyer'] as String;
+        final buyerShortAddress = buyerAddress.isEmpty ? 'Unknown' : 
+          '${buyerAddress.substring(0, 6)}...${buyerAddress.substring(buyerAddress.length - 4)}';
         
-        final counterpartyAddress = offerDetails['counterparty'];
-        final counterpartyShortAddress = counterpartyAddress == '0x0000000000000000000000000000000000000000'
-          ? 'Not assigned'
-          : '${counterpartyAddress.substring(0, 6)}...${counterpartyAddress.substring(counterpartyAddress.length - 4)}';
+        final sellerAddress = agreementDetails['seller'] as String;
+        final sellerShortAddress = sellerAddress.isEmpty ? 'Unknown' :
+          '${sellerAddress.substring(0, 6)}...${sellerAddress.substring(sellerAddress.length - 4)}';
+          
+        // Determine if the current user is buyer or seller
+        final isUserBuyer = buyerAddress.toLowerCase() == _currentWalletAddress!.toLowerCase();
+        final role = isUserBuyer ? 'Buyer' : 'Seller';
         
-        // Determine if the current user is creator or counterparty
-        final isCreator = creatorAddress.toLowerCase() == _currentWalletAddress!.toLowerCase();
-        final role = isCreator ? 'Seller' : 'Buyer';
-        final partner = isCreator 
-          ? (offerDetails['counterpartyUsername'].toString().isEmpty 
-              ? counterpartyShortAddress 
-              : offerDetails['counterpartyUsername'])
-          : (offerDetails['creatorUsername'].toString().isEmpty 
-              ? creatorShortAddress 
-              : offerDetails['creatorUsername']);
-        
-        final startDateTime = DateTime.fromMillisecondsSinceEpoch(
-          (offerDetails['startTime'] as BigInt).toInt() * 1000
+        // Determine partner name and address
+        final partner = isUserBuyer 
+          ? (agreementDetails['sellerUsername'].toString().isEmpty 
+              ? sellerShortAddress 
+              : agreementDetails['sellerUsername'])
+          : (agreementDetails['buyerUsername'].toString().isEmpty 
+              ? buyerShortAddress 
+              : agreementDetails['buyerUsername']);
+              
+        // Calculate price per unit from total price and energy amount
+        final pricePerUnit = agreementDetails['finalEnergyAmount'] > 0
+            ? agreementDetails['finalTotalPrice'] / agreementDetails['finalEnergyAmount']
+            : 0.0;
+            
+        // Create timestamp from agreement time
+        final agreedAtDateTime = DateTime.fromMillisecondsSinceEpoch(
+          agreementDetails['agreedAt'] as int
         );
-        final endDateTime = DateTime.fromMillisecondsSinceEpoch(
-          (offerDetails['endTime'] as BigInt).toInt() * 1000
-        );
         
+        // Create the agreement object with all necessary details
         final agreement = {
-          'id': offerId,
-          'offerType': offerTypeInt == 0 ? 'Sell' : 'Buy',
-          'energyAmount': energyAmount,
+          'id': agreementId,
+          'offerId': agreementDetails['offerId'],
+          'buyer': agreementDetails['buyer'],
+          'buyerUsername': agreementDetails['buyerUsername'].toString().isEmpty 
+              ? buyerShortAddress 
+              : agreementDetails['buyerUsername'],
+          'seller': agreementDetails['seller'],
+          'sellerUsername': agreementDetails['sellerUsername'].toString().isEmpty 
+              ? sellerShortAddress 
+              : agreementDetails['sellerUsername'],
+          'energyAmount': agreementDetails['finalEnergyAmount'],
+          'totalPrice': agreementDetails['finalTotalPrice'],
           'pricePerUnit': pricePerUnit,
-          'price': totalPrice,
-          'startTime': startDateTime,
-          'endTime': endDateTime,
-          'creator': offerDetails['creator'],
-          'creatorUsername': offerDetails['creatorUsername'].toString().isEmpty 
-              ? creatorShortAddress 
-              : offerDetails['creatorUsername'],
-          'counterparty': offerDetails['counterparty'],
-          'counterpartyUsername': offerDetails['counterpartyUsername'].toString().isEmpty 
-              ? counterpartyShortAddress 
-              : offerDetails['counterpartyUsername'],
-          'status': offerStatusInt == 0 ? 'Active' : (offerStatusInt == 1 ? 'Agreed' : 'Cancelled'),
-          'createdAt': createdAtDateTime,
+          'agreedAt': agreedAtDateTime,
+          'isActive': agreementDetails['isActive'],
+          'funded': agreementDetails['funded'],
+          'status': agreementDetails['isActive'] 
+              ? (agreementDetails['funded'] ? 'Active' : 'Awaiting Payment') 
+              : 'Completed',
           'role': role,
           'partner': partner,
+          // Use agreed date for display calculations
+          'startTime': agreedAtDateTime,
+          'endTime': agreedAtDateTime.add(const Duration(days: 30)),
         };
         
-        // Only add agreements (status == 1 for Agreed)
-        if (offerStatusInt == 1) {
-          agreements.add(agreement);
-        }
+        agreements.add(agreement);
       } catch (e) {
-        print('Error loading agreement $offerId: $e');
+        print('Error loading agreement $agreementId: $e');
         // Continue with next agreement
       }
     }
@@ -2964,7 +2957,7 @@ Widget _buildAgreementsTable() {
 }
 
 DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
-  final formattedEndDate = DateFormat('MMM dd, yyyy').format(agreement['endTime']);
+  final formattedDate = DateFormat('MMM dd, yyyy').format(agreement['agreedAt']);
   final shortId = '${agreement['id'].toString().substring(0, 6)}...';
   
   return DataRow(
@@ -3014,7 +3007,7 @@ DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
       ),
       DataCell(
         Text(
-          '\$${agreement['price'].toStringAsFixed(2)}',
+          '\$${agreement['totalPrice'].toStringAsFixed(2)}',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
@@ -3022,13 +3015,13 @@ DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.2),
+            color: _getStatusColor(agreement['status']).withOpacity(0.2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
             agreement['status'],
-            style: const TextStyle(
-              color: Colors.orange,
+            style: TextStyle(
+              color: _getStatusColor(agreement['status']),
               fontWeight: FontWeight.bold,
               fontSize: 13,
             ),
@@ -3037,7 +3030,7 @@ DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
       ),
       DataCell(
         Text(
-          formattedEndDate,
+          formattedDate,
           style: const TextStyle(color: Colors.white70, fontSize: 13),
         ),
       ),
@@ -3045,6 +3038,21 @@ DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Show funding button for buyers with unfunded agreements
+            if (agreement['role'] == 'Buyer' && !agreement['funded'] && agreement['isActive'])
+              ElevatedButton(
+                onPressed: () => _fundAgreement(agreement),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                child: const Text('Fund'),
+              ),
+            const SizedBox(width: 8),
             ElevatedButton.icon(
               icon: const Icon(Icons.chat_bubble_outline, size: 16),
               label: const Text('Chat'),
@@ -3057,14 +3065,13 @@ DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
               onPressed: () {
-                // Navigate to chat with this partner about this agreement
                 Navigator.pushNamed(
                   context,
                   '/chat',
                   arguments: {
                     'user': agreement['partner'],
                     'offerId': agreement['id'],
-                    'offerType': agreement['offerType'],
+                    'offerType': agreement['role'] == 'Seller' ? 'Sell' : 'Buy',
                   },
                 );
                 
@@ -3091,7 +3098,7 @@ Widget _buildAgreementCardList() {
     itemCount: _userAgreements.length,
     itemBuilder: (context, index) {
       final agreement = _userAgreements[index];
-      final formattedEndDate = DateFormat('MMM dd, yyyy').format(agreement['endTime']);
+      final formattedDate = DateFormat('MMM dd, yyyy').format(agreement['agreedAt']);
       
       return Card(
         margin: const EdgeInsets.only(bottom: 12),
@@ -3122,13 +3129,13 @@ Widget _buildAgreementCardList() {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.2),
+                      color: _getStatusColor(agreement['status']).withOpacity(0.2),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
                       agreement['status'],
-                      style: const TextStyle(
-                        color: Colors.orange,
+                      style: TextStyle(
+                        color: _getStatusColor(agreement['status']),
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3142,7 +3149,7 @@ Widget _buildAgreementCardList() {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'ID: ${agreement['id'].toString().substring(0, 10)}...',
+                      'Agreement ID: ${agreement['id'].toString().substring(0, 10)}...',
                       style: const TextStyle(color: Colors.white, fontSize: 14),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -3177,7 +3184,7 @@ Widget _buildAgreementCardList() {
                   const Icon(Icons.attach_money, color: Colors.green, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'Total: \$${agreement['price'].toStringAsFixed(2)} (\$${agreement['pricePerUnit'].toStringAsFixed(3)}/kWh)',
+                    'Total: \$${agreement['totalPrice'].toStringAsFixed(2)} (\$${agreement['pricePerUnit'].toStringAsFixed(3)}/kWh)',
                     style: const TextStyle(color: Colors.white, fontSize: 16),
                   ),
                 ],
@@ -3188,11 +3195,36 @@ Widget _buildAgreementCardList() {
                   const Icon(Icons.calendar_today, color: Colors.white70, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'Valid until: $formattedEndDate',
+                    'Agreed on: $formattedDate',
                     style: const TextStyle(color: Colors.white70),
                   ),
                 ],
               ),
+              
+              // Add funding button for buyers with unfunded agreements
+              if (agreement['role'] == 'Buyer' && !agreement['funded'] && agreement['isActive']) ...[
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => _fundAgreement(agreement),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.account_balance_wallet),
+                      SizedBox(width: 8),
+                      Text('Fund Agreement'),
+                    ],
+                  ),
+                ),
+              ],
+              
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 icon: const Icon(Icons.chat_bubble_outline),
@@ -3206,14 +3238,13 @@ Widget _buildAgreementCardList() {
                   ),
                 ),
                 onPressed: () {
-                  // Navigate to chat
                   Navigator.pushNamed(
                     context,
                     '/chat',
                     arguments: {
                       'user': agreement['partner'],
                       'offerId': agreement['id'],
-                      'offerType': agreement['offerType'],
+                      'offerType': agreement['role'] == 'Seller' ? 'Sell' : 'Buy',
                     },
                   );
                   
@@ -3230,6 +3261,16 @@ Widget _buildAgreementCardList() {
         ),
       );
     },
+  );
+}
+
+Future<void> _fundAgreement(Map<String, dynamic> agreement) async {
+  // You can implement this later to call the smart contract's funding function
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Funding functionality not implemented yet'),
+      backgroundColor: Colors.orange,
+    ),
   );
 }
 }

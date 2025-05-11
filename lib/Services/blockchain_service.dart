@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:js_interop';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -422,6 +423,109 @@ class BlockchainService with ChangeNotifier {
     _currentChainId = int.parse(chainId, radix: 16);
     notifyListeners();
   });
+}
+
+// Add this utility function to your BlockchainService class
+BigInt _toBigInt(dynamic value) {
+  if (value == null) return BigInt.zero;
+  
+  // Handle JavaScript BigInt
+  if (value is JSObject || value.toString().contains('n')) {
+    // Convert JavaScript BigInt to string without the 'n' suffix
+    String numStr = value.toString();
+    if (numStr.endsWith('n')) {
+      numStr = numStr.substring(0, numStr.length - 1);
+    }
+    return BigInt.parse(numStr);
+  } 
+  
+  // If it's already a Dart BigInt
+  if (value is BigInt) {
+    return value;
+  }
+  
+  // For other number types
+  return BigInt.from(value);
+}
+
+// Add this utility method to safely convert JS BigInts to Dart values
+dynamic _convertJSValue(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  
+  // For JS BigInt values
+  if (value.toString().contains('n')) {
+    // Convert to string and remove 'n' suffix
+    String numStr = value.toString();
+    if (numStr.endsWith('n')) {
+      numStr = numStr.substring(0, numStr.length - 1);
+    }
+    
+    // Parse number - as double if for display, as BigInt if needed for calculations
+    try {
+      return double.parse(numStr);
+    } catch (e) {
+      return 0.0;
+    }
+  }
+  
+  // Return original value for other types
+  return value;
+}
+
+Future<Map<String, dynamic>> getAgreementDetails(String agreementId) async {
+  if (!_isConnected) {
+    throw Exception('Not connected to blockchain');
+  }
+
+  try {
+    final result = await promiseToFuture<dynamic>(
+      callContractFunction(
+        _marketContractAddress, 
+        _marketContractAbi, 
+        'getAgreementDetails', 
+        jsify([agreementId])
+      )
+    );
+    
+    // Safely convert the numeric values from JS BigInt
+    final energyAmount = _convertJSValue(result[6]);
+    final totalPrice = _convertJSValue(result[7]);
+    final timestamp = _convertJSValue(result[8]);
+    
+    // Create millisecond timestamp for DateTime
+    int timestampMs = 0;
+    if (timestamp is double) {
+      timestampMs = (timestamp * 1000).toInt();
+    } else {
+      try {
+        timestampMs = int.parse(timestamp.toString()) * 1000;
+      } catch (e) {
+        timestampMs = 0;
+      }
+    }
+    
+    // Format the final values
+    double finalEnergyAmount = energyAmount is double ? energyAmount / 1e18 : 0.0;
+    double finalTotalPrice = totalPrice is double ? totalPrice / 1e18 : 0.0;
+    
+    return {
+      'id': result[0],
+      'offerId': result[1],
+      'buyer': result[2],
+      'buyerUsername': result[3],
+      'seller': result[4],
+      'sellerUsername': result[5],
+      'finalEnergyAmount': finalEnergyAmount,
+      'finalTotalPrice': finalTotalPrice,
+      'agreedAt': timestampMs,
+      'isActive': result[9],
+      'funded': result[10]
+    };
+  } catch (e) {
+    throw Exception('Failed to get agreement details: $e');
+  }
 }
 
   Future<String> acceptOfferDirectly(String offerId) async {
