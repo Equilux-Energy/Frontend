@@ -73,6 +73,10 @@ class _TransactionPageState extends State<TransactionPage> {
   // Add these variables to the _TransactionPageState class
   bool _showTransactionHistory = false;
   bool _isLoading = false; // Variable to track loading state
+  bool _isLoadingAgreements = false;
+  bool _showAvailableOffers = true;
+  bool _showAgreements = true;
+  List<Map<String, dynamic>> _userAgreements = [];
   final List<Map<String, dynamic>> _transactionHistory = [
     {
       'id': 'TX001',
@@ -130,10 +134,16 @@ class _TransactionPageState extends State<TransactionPage> {
   String? _currentBalance;
 
   @override
-  void initState() {
-    super.initState();
-    _initializeBlockchain();
-  }
+void initState() {
+  super.initState();
+  
+  // Initialize tabs
+  _showAvailableOffers = true;
+  _showAgreements = false;
+  _showTransactionHistory = false;
+  
+  _initializeBlockchain();
+}
 
   Future<void> _initializeBlockchain() async {
     setState(() {
@@ -864,7 +874,7 @@ class _TransactionPageState extends State<TransactionPage> {
       // Connected state
       
       debugPrint('Balance from page: $_currentBalance');
-      String displayAddress = _currentBalance!.substring(0,6);
+      String displayAddress = (_currentBalance!.length>7) ?_currentBalance!.substring(0,6): _currentBalance!;
       return ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
@@ -1470,17 +1480,38 @@ class _TransactionPageState extends State<TransactionPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Tab switcher
+          // Tab switcher with 3 tabs
           Row(
             children: [
               Expanded(
                 child: _buildTabSelector(
                   title: "Available Offers",
-                  isActive: !_showTransactionHistory,
+                  isActive: _showAvailableOffers,
                   onTap: () {
                     setState(() {
+                      _showAvailableOffers = true;
+                      _showAgreements = false;
                       _showTransactionHistory = false;
                     });
+                  },
+                ),
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                child: _buildTabSelector(
+                  title: "Agreements",
+                  isActive: _showAgreements,
+                  onTap: () {
+                    setState(() {
+                      _showAvailableOffers = false;
+                      _showAgreements = true;
+                      _showTransactionHistory = false;
+                    });
+                    
+                    // Load agreements when tab is selected
+                    if (_isWalletConnected) {
+                      _loadUserAgreements();
+                    }
                   },
                 ),
               ),
@@ -1491,6 +1522,8 @@ class _TransactionPageState extends State<TransactionPage> {
                   isActive: _showTransactionHistory,
                   onTap: () {
                     setState(() {
+                      _showAvailableOffers = false;
+                      _showAgreements = false;
                       _showTransactionHistory = true;
                     });
                   },
@@ -1501,9 +1534,12 @@ class _TransactionPageState extends State<TransactionPage> {
           const SizedBox(height: 16),
           
           // Different content based on selected tab
-          _showTransactionHistory
-              ? _buildTransactionHistorySection(isMobile)
-              : _buildAvailableOffersSection(isMobile),
+          if (_showAvailableOffers)
+            _buildAvailableOffersSection(isMobile)
+          else if (_showAgreements)
+            _buildAgreementsSection(isMobile)
+          else
+            _buildTransactionHistorySection(isMobile),
         ],
       ),
     ),
@@ -2039,82 +2075,54 @@ Color _getStatusColor(String status) {
           ),
         ),
         DataCell(
-  Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      // Check if this offer belongs to the current user
-      offer['creator'].toString().toLowerCase() == _currentWalletAddress?.toLowerCase()
-      ? Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.purple.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(6),
+          Column(
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Check if this offer belongs to the current user
+                  offer['creator'].toString().toLowerCase() == _currentWalletAddress?.toLowerCase()
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('Your Offer', style: TextStyle(color: Colors.white))
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF5C005C),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          onPressed: () {
+                            if (isSellType) {
+                              _buyEnergy(offer); // This now calls acceptOfferDirectly
+                            } else {
+                              
+                              _buyEnergy(offer); // This now calls acceptOfferDirectly
+                              // ScaffoldMessenger.of(context).showSnackBar(
+                              //   const SnackBar(content: Text('Selling to buy offers not yet implemented')),
+                              // );
+                            }
+                          },
+                          child: Text(isSellType ? 'Buy' : 'Sell'),
+                        ),
+                        // Chat button remains unchanged
+                      ],
+                    ),
+                ],
+              ),
+            ],
           ),
-          child: const Text('Your Offer', style: TextStyle(color: Colors.white))
-        )
-      : Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF5C005C),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-              onPressed: () {
-                if (isSellType) {
-                  // Buy energy using blockchain service
-                  _buyEnergy(offer);
-                } else {
-                  // Sell to a buy offer - not implemented yet
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Selling to buy offers not yet implemented')),
-                  );
-                }
-              },
-              child: Text(isSellType ? 'Buy' : 'Sell'),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.chat_bubble_outline, size: 16),
-              label: const Text('Chat'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              ),
-              onPressed: () {
-                // Navigate to chat or open chat dialog
-                Navigator.pushNamed(
-                  context,
-                  '/chat',
-                  arguments: {
-                    'user': offer['user'],
-                    'offerId': offer['id'],
-                    'offerType': offer['offerType'],
-                  },
-                );
-                
-                // Show confirmation toast
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Starting chat with ${offer["user"]} about ${offer["offerType"]} offer'),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
-              },
-            ),
-          ],
         ),
-    ],
-  ),
-),
       ],
     );
   }
@@ -2250,67 +2258,84 @@ Color _getStatusColor(String status) {
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
+              const SizedBox(height: 16),
+              offer['creator'].toString().toLowerCase() == _currentWalletAddress?.toLowerCase()
+              ? Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'Your Offer', 
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+                  )
+                )
+              : Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF5C005C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: () {
+                              if (isSellType) {
+                                _buyEnergy(offer);
+                              } else {
+                                
+                                _buyEnergy(offer);
+                                // ScaffoldMessenger.of(context).showSnackBar(
+                                //   const SnackBar(content: Text('Selling to buy offers not yet implemented')),
+                                // );
+                              }
+                            },
+                            child: Text(isSellType ? 'Buy Now' : 'Sell Now'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      label: const Text('Chat'),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF5C005C),
+                        backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
                       onPressed: () {
-                        if (isSellType) {
-                          // Buy energy using blockchain service
-                          _buyEnergy(offer);
-                        } else {
-                          // Sell to a buy offer - not implemented yet
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Selling to buy offers not yet implemented')),
-                          );
-                        }
+                        // Existing chat navigation code
+                        Navigator.pushNamed(
+                          context,
+                          '/chat',
+                          arguments: {
+                            'user': offer['user'],
+                            'offerId': offer['id'],
+                            'offerType': offer['offerType'],
+                          },
+                        );
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Starting chat with ${offer["user"]} about ${offer["offerType"]} offer'),
+                            backgroundColor: Colors.blue,
+                          ),
+                        );
                       },
-                      child: Text(isSellType ? 'Buy Now' : 'Sell Now'),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    label: const Text('Chat'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: () {
-                      // Navigate to chat
-                      Navigator.pushNamed(
-                        context,
-                        '/chat',
-                        arguments: {
-                          'user': offer['user'],
-                          'offerId': offer['id'],
-                          'offerType': offer['offerType'],
-                        },
-                      );
-                      
-                      // Show confirmation toast
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Starting chat with ${offer["user"]} about ${offer["offerType"]} offer'),
-                          backgroundColor: Colors.blue,
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -2511,102 +2536,700 @@ void _applyFilters() {
 }
 
 Future<void> _buyEnergy(Map<String, dynamic> offer) async {
-    if (!_isWalletConnected) {
+  if (!_isWalletConnected) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please connect your wallet first')),
+    );
+    return;
+  }
+  
+  setState(() {
+    _isLoading = true;
+  });
+  
+  try {
+    // Check if on correct network
+    if (_currentChainId != 17000) { // 17000 is Holesky testnet
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please connect your wallet first')),
+        const SnackBar(content: Text('Please switch to Holesky testnet')),
+      );
+      
+      await _switchNetwork(17000);
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+    
+    // Get the offer ID
+    final offerId = offer['id'];
+    
+    // Call acceptOfferDirectly from the smart contract
+    final txHash = await _blockchainService.acceptOfferDirectly(offerId);
+    
+    // Create transaction record
+    final newTransaction = {
+      'id': 'TX${(1000 + _transactionHistory.length).toString()}',
+      'type': offer['offerType'] == 'Sell' ? 'Buy' : 'Sell',
+      'amount': offer['energyAmount'],
+      'price': offer['pricePerUnit'],
+      'totalPrice': offer['price'],
+      'counterparty': offer['user'],
+      'timestamp': DateTime.now(),
+      'status': 'Agreed',
+      'txHash': txHash,
+    };
+    
+    // Add to transaction history
+    setState(() {
+      _transactionHistory.insert(0, newTransaction);
+    });
+    
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Successfully accepted offer! Transaction: ${txHash.substring(0, 10)}...'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'View',
+          textColor: Colors.white,
+          onPressed: () {
+            final explorerUrl = _currentChainId == 17000
+                ? 'https://holesky.etherscan.io/tx/$txHash'
+                : 'https://etherscan.io/tx/$txHash';
+            launch(explorerUrl);
+          },
+        ),
+      ),
+    );
+    
+    // Switch to transaction history tab
+    setState(() {
+      _showTransactionHistory = true;
+      _isLoading = false;
+    });
+    
+    // Refresh offers
+    _loadActiveOffers();
+  } catch (e) {
+    setState(() {
+      _isLoading = false;
+    });
+    
+    String errorMessage = e.toString();
+    if (errorMessage.contains('execution reverted')) {
+      errorMessage = 'Transaction rejected by the blockchain. Check your parameters.';
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error accepting offer: $errorMessage'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+    
+    debugPrint('Detailed error accepting offer: $e');
+  }
+}
+
+Future<void> _loadUserAgreements() async {
+  if (!_isWalletConnected || _currentWalletAddress == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please connect your wallet to view agreements')),
+    );
+    return;
+  }
+  
+  setState(() {
+    _isLoadingAgreements = true;
+  });
+  
+  try {
+    // Get agreement IDs for the current user
+    final agreementIds = await _blockchainService.getUserAgreements(_currentWalletAddress!);
+    
+    if (agreementIds.isEmpty) {
+      setState(() {
+        _isLoadingAgreements = false;
+        _userAgreements = [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No agreements found for your account')),
       );
       return;
     }
     
-    setState(() {
-      _isLoading = true;
-    });
+    List<Map<String, dynamic>> agreements = [];
     
-    try {
-      // Check if on correct network
-      if (_currentChainId != 17000) { // 17000 is Holesky testnet
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please switch to Holesky testnet')),
+    // Loop through each agreement ID and get details
+    for (final offerId in agreementIds) {
+      try {
+        final offerDetails = await _blockchainService.getOfferDetails(offerId);
+        
+        // Convert the offer details to match our UI format
+        final offerTypeInt = offerDetails['offerType'] as int;
+        final offerStatusInt = offerDetails['status'] as int;
+        
+        // Convert timestamp from seconds to milliseconds for DateTime
+        final createdAtDateTime = DateTime.fromMillisecondsSinceEpoch(
+          (offerDetails['createdAt'] as BigInt).toInt() * 1000
         );
         
-        await _switchNetwork(17000);
-        setState(() {
-          _isLoading = false;
-        });
-        return;
+        // Convert blockchain values properly
+        final energyAmount = (offerDetails['energyAmount'] as BigInt).toDouble() / 1e18;
+        final pricePerUnit = (offerDetails['pricePerUnit'] as BigInt).toDouble() / 1e18;
+        
+        // Calculate USD price correctly
+        final totalPrice = energyAmount * pricePerUnit;
+        
+        // Format addresses for display
+        final creatorAddress = offerDetails['creator'];
+        final creatorShortAddress = '${creatorAddress.substring(0, 6)}...${creatorAddress.substring(creatorAddress.length - 4)}';
+        
+        final counterpartyAddress = offerDetails['counterparty'];
+        final counterpartyShortAddress = counterpartyAddress == '0x0000000000000000000000000000000000000000'
+          ? 'Not assigned'
+          : '${counterpartyAddress.substring(0, 6)}...${counterpartyAddress.substring(counterpartyAddress.length - 4)}';
+        
+        // Determine if the current user is creator or counterparty
+        final isCreator = creatorAddress.toLowerCase() == _currentWalletAddress!.toLowerCase();
+        final role = isCreator ? 'Seller' : 'Buyer';
+        final partner = isCreator 
+          ? (offerDetails['counterpartyUsername'].toString().isEmpty 
+              ? counterpartyShortAddress 
+              : offerDetails['counterpartyUsername'])
+          : (offerDetails['creatorUsername'].toString().isEmpty 
+              ? creatorShortAddress 
+              : offerDetails['creatorUsername']);
+        
+        final startDateTime = DateTime.fromMillisecondsSinceEpoch(
+          (offerDetails['startTime'] as BigInt).toInt() * 1000
+        );
+        final endDateTime = DateTime.fromMillisecondsSinceEpoch(
+          (offerDetails['endTime'] as BigInt).toInt() * 1000
+        );
+        
+        final agreement = {
+          'id': offerId,
+          'offerType': offerTypeInt == 0 ? 'Sell' : 'Buy',
+          'energyAmount': energyAmount,
+          'pricePerUnit': pricePerUnit,
+          'price': totalPrice,
+          'startTime': startDateTime,
+          'endTime': endDateTime,
+          'creator': offerDetails['creator'],
+          'creatorUsername': offerDetails['creatorUsername'].toString().isEmpty 
+              ? creatorShortAddress 
+              : offerDetails['creatorUsername'],
+          'counterparty': offerDetails['counterparty'],
+          'counterpartyUsername': offerDetails['counterpartyUsername'].toString().isEmpty 
+              ? counterpartyShortAddress 
+              : offerDetails['counterpartyUsername'],
+          'status': offerStatusInt == 0 ? 'Active' : (offerStatusInt == 1 ? 'Agreed' : 'Cancelled'),
+          'createdAt': createdAtDateTime,
+          'role': role,
+          'partner': partner,
+        };
+        
+        // Only add agreements (status == 1 for Agreed)
+        if (offerStatusInt == 1) {
+          agreements.add(agreement);
+        }
+      } catch (e) {
+        print('Error loading agreement $offerId: $e');
+        // Continue with next agreement
       }
-      
-      // Get the listing ID and amount to buy
-      final listingId = BigInt.parse(offer['id']);
-      final amount = BigInt.from(offer['energyAmount'] * 1e18); // Convert to BigInt with 18 decimals
-      
-      final txHash = await _blockchainService.buyEnergy(listingId, amount);
-      
-      // Create transaction record
-      final newTransaction = {
-        'id': 'TX${(1000 + _transactionHistory.length).toString()}',
-        'type': 'Buy',
-        'amount': offer['energyAmount'],
-        'price': offer['pricePerUnit'],
-        'totalPrice': offer['price'],
-        'counterparty': offer['user'],
-        'timestamp': DateTime.now(),
-        'status': 'Completed',
-        'txHash': txHash,
-      };
-      
-      // Add to transaction history
-      setState(() {
-        _transactionHistory.insert(0, newTransaction);
-      });
-      
-      // Show success message
+    }
+    
+    setState(() {
+      _userAgreements = agreements;
+      _isLoadingAgreements = false;
+    });
+    
+    if (agreements.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Successfully bought energy! Transaction: ${txHash.substring(0, 10)}...'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'View',
-            textColor: Colors.white,
-            onPressed: () {
-              final explorerUrl = _currentChainId == 17000
-                  ? 'https://holesky.etherscan.io/tx/$txHash'
-                  : 'https://etherscan.io/tx/$txHash';
-              launch(explorerUrl);
-            },
+        const SnackBar(content: Text('No valid agreements found for your account')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Successfully loaded ${agreements.length} agreements')),
+      );
+    }
+    
+  } catch (e) {
+    print('Error loading agreements: $e');
+    setState(() {
+      _isLoadingAgreements = false;
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error loading agreements: ${e.toString().substring(0, min(50, e.toString().length))}...'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
+}
+
+Widget _buildAgreementsSection(bool isMobile) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'My Energy Agreements',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          Row(
+            children: [
+              if (_isWalletConnected)
+                IconButton(
+                  icon: Icon(
+                    Icons.refresh,
+                    color: _isLoadingAgreements ? Colors.purple.shade300 : Colors.white,
+                  ),
+                  tooltip: 'Refresh agreements',
+                  onPressed: _isLoadingAgreements
+                      ? null
+                      : _loadUserAgreements,
+                ),
+              const SizedBox(width: 8),
+              Text(
+                '${_userAgreements.length} agreements',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      
+      // Show connection prompt if wallet not connected
+      if (!_isWalletConnected)
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.wallet,
+                color: Colors.white54,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Connect your wallet to view your energy agreements',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.account_balance_wallet),
+                label: const Text('Connect Wallet'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5C005C),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                onPressed: _connectWallet,
+              ),
+            ],
+          ),
+        )
+      else if (_isLoadingAgreements)
+        const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF5C005C)),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Loading your agreements...',
+                style: TextStyle(color: Colors.white, fontSize: 16)
+              )
+            ],
+          ),
+        )
+      else if (_userAgreements.isEmpty)
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.handshake,
+                color: Colors.white54,
+                size: 64,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'You don\'t have any energy agreements yet',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Buy or sell energy to create agreements',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF5C005C),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                onPressed: _loadUserAgreements,
+              ),
+            ],
+          ),
+        )
+      else
+        isMobile ? _buildAgreementCardList() : _buildAgreementsTable(),
+    ],
+  );
+}
+
+Widget _buildAgreementsTable() {
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final availableWidth = constraints.maxWidth;
+      
+      return Container(
+        width: availableWidth,
+        decoration: BoxDecoration(
+          color: const Color(0xFF5C005C).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: availableWidth),
+            child: DataTable(
+              columnSpacing: 16,
+              dataRowHeight: 70,
+              headingRowHeight: 56,
+              horizontalMargin: 24,
+              headingRowColor: MaterialStateProperty.all(
+                const Color(0xFF5C005C).withOpacity(0.2),
+              ),
+              columns: const [
+                DataColumn(
+                  label: Text('ID', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Role', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Partner', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Amount (kWh)', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Price/kWh', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Total', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Status', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Valid Until', style: TextStyle(color: Colors.white)),
+                ),
+                DataColumn(
+                  label: Text('Actions', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+              rows: _userAgreements.map((agreement) => _buildAgreementRow(agreement)).toList(),
+            ),
           ),
         ),
       );
+    }
+  );
+}
+
+DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
+  final formattedEndDate = DateFormat('MMM dd, yyyy').format(agreement['endTime']);
+  final shortId = '${agreement['id'].toString().substring(0, 6)}...';
+  
+  return DataRow(
+    cells: [
+      DataCell(
+        Tooltip(
+          message: agreement['id'],
+          child: Text(
+            shortId,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+      ),
+      DataCell(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: agreement['role'] == 'Seller' ? Colors.green.withOpacity(0.2) : Colors.blue.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            agreement['role'],
+            style: TextStyle(
+              color: agreement['role'] == 'Seller' ? Colors.green : Colors.blue,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+      DataCell(
+        Text(
+          agreement['partner'],
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+      DataCell(
+        Text(
+          '${agreement['energyAmount'].toStringAsFixed(1)}',
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+      DataCell(
+        Text(
+          '\$${agreement['pricePerUnit'].toStringAsFixed(3)}/kWh',
+          style: const TextStyle(color: Colors.white, fontSize: 13),
+        ),
+      ),
+      DataCell(
+        Text(
+          '\$${agreement['price'].toStringAsFixed(2)}',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+      DataCell(
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            agreement['status'],
+            style: const TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+      DataCell(
+        Text(
+          formattedEndDate,
+          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        ),
+      ),
+      DataCell(
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.chat_bubble_outline, size: 16),
+              label: const Text('Chat'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              onPressed: () {
+                // Navigate to chat with this partner about this agreement
+                Navigator.pushNamed(
+                  context,
+                  '/chat',
+                  arguments: {
+                    'user': agreement['partner'],
+                    'offerId': agreement['id'],
+                    'offerType': agreement['offerType'],
+                  },
+                );
+                
+                // Show confirmation toast
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Starting chat with ${agreement["partner"]} about your agreement'),
+                    backgroundColor: Colors.blue,
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _buildAgreementCardList() {
+  return ListView.builder(
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    itemCount: _userAgreements.length,
+    itemBuilder: (context, index) {
+      final agreement = _userAgreements[index];
+      final formattedEndDate = DateFormat('MMM dd, yyyy').format(agreement['endTime']);
       
-      // Switch to transaction history tab
-      setState(() {
-        _showTransactionHistory = true;
-        _isLoading = false;
-      });
-      
-      // Refresh offers
-      _loadActiveOffers();
-      
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      
-      String errorMessage = e.toString();
-      if (errorMessage.contains('execution reverted')) {
-        errorMessage = 'Transaction rejected by the blockchain. Check your parameters.';
-      }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error buying energy: $errorMessage'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 5),
+      return Card(
+        margin: const EdgeInsets.only(bottom: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        color: Colors.black.withOpacity(0.3),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: agreement['role'] == 'Seller' ? Colors.green.withOpacity(0.2) : Colors.blue.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      agreement['role'],
+                      style: TextStyle(
+                        color: agreement['role'] == 'Seller' ? Colors.green : Colors.blue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      agreement['status'],
+                      style: const TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.receipt_long, color: Colors.purple, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'ID: ${agreement['id'].toString().substring(0, 10)}...',
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.person, color: Colors.blue, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Partner: ${agreement['partner']}',
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.bolt, color: Colors.yellow, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${agreement['energyAmount'].toStringAsFixed(1)} kWh',
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.attach_money, color: Colors.green, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Total: \$${agreement['price'].toStringAsFixed(2)} (\$${agreement['pricePerUnit'].toStringAsFixed(3)}/kWh)',
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today, color: Colors.white70, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Valid until: $formattedEndDate',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Chat with Partner'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () {
+                  // Navigate to chat
+                  Navigator.pushNamed(
+                    context,
+                    '/chat',
+                    arguments: {
+                      'user': agreement['partner'],
+                      'offerId': agreement['id'],
+                      'offerType': agreement['offerType'],
+                    },
+                  );
+                  
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Starting chat with ${agreement["partner"]} about your agreement'),
+                      backgroundColor: Colors.blue,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       );
-      
-      debugPrint('Detailed error buying energy: $e');
-    }
-  }
+    },
+  );
+}
 }

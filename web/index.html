@@ -227,46 +227,56 @@
       },
 
       callContractFunction: async function(contractAddress, contractAbi, method, args) {
-      window.dappLog.info('Calling contract function:', {
-        contractAddress,
-        contractAbiInfo: `Type: ${typeof contractAbi}`,
-        method,
-        args
-      });
-      if (!window.ethereum) {
-        throw new Error('MetaMask not available');
-      }
-
-      try {
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        // Parse ABI if it's a string, or use directly if it's already an object
-        const parsedAbi = typeof contractAbi === 'string' ? JSON.parse(contractAbi) : contractAbi;
-        window.dappLog.info('Creating contract instance for read-only call', {
+        window.dappLog.info('Calling contract function:', {
           contractAddress,
-          abiFormat: typeof contractAbi
+          contractAbiInfo: `Type: ${typeof contractAbi}`,
+          method,
+          args
         });
-        const contract = new ethers.Contract(contractAddress, parsedAbi, signer);
-
-        // Add debugging to check if method exists
-        // window.dappLog.info('Available contract methods:', Object.keys(contract.interface.functions));
-
-        // if (typeof contract[method] !== 'function') {
-        //   throw new Error(`Method ${method} not found on contract`);
-        // }
-        const safeArgs = args || [];
-        // Call the contract method
-        console.log('Calling contract method:', method, 'with args:', safeArgs);
-        const result = await contract[method](...safeArgs);
-        console.log('Contract call result:', result);
-        window.dappLog.success('Contract function call successful:', result);
-        return result;
-      } catch (error) {
-        window.dappLog.error('Error calling contract function:', error);
-        throw error;
-      }
-    },
-
+        if (!window.ethereum) {
+          throw new Error('MetaMask not available');
+        }
+      
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          // Parse ABI if it's a string, or use directly if it's already an object
+          const parsedAbi = typeof contractAbi === 'string' ? JSON.parse(contractAbi) : contractAbi;
+          window.dappLog.info('Creating contract instance for read-only call', {
+            contractAddress,
+            abiFormat: typeof contractAbi
+          });
+          
+          // For read-only calls, we can use the provider directly (no need for signer)
+          const contract = new ethers.Contract(contractAddress, parsedAbi, signer);
+          const safeArgs = args || [];
+          
+          // Special handling for getActiveOffers which might return an empty array
+          if (method === 'getActiveOffers') {
+            try {
+              const result = await contract[method](...safeArgs);
+              window.dappLog.success('Contract function call successful:', result);
+              return result;
+            } catch (error) {
+              // If we get a decoding error for getActiveOffers, return an empty array
+              if (error.message.includes('could not decode result data') || 
+                  error.message.includes('BAD_DATA')) {
+                window.dappLog.warning('Empty result from getActiveOffers, returning empty array');
+                return [];
+              }
+              throw error;
+            }
+          } else {
+            // Normal handling for other methods
+            const result = await contract[method](...safeArgs);
+            window.dappLog.success('Contract function call successful:', result);
+            return result;
+          }
+        } catch (error) {
+          window.dappLog.error('Error calling contract function:', error);
+          throw error;
+        }
+      },
     };
 
     // Add event listeners for MetaMask

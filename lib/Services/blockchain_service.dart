@@ -117,7 +117,7 @@ class BlockchainService with ChangeNotifier {
     
     // Set contract addresses (replace with your actual contract addresses)
     _tokenContractAddress = '0x52e12c26029ed061de7568e2b1acd9a39277e3ef';
-    _marketContractAddress = '0x8c03ef4bb3f0c0e11d9dd95acacc55a6c6e35bf7';
+    _marketContractAddress = '0x23Ab54Aac277e66f3d84E088fBb966d76aB56082';
   }
   
   // Connect to MetaMask
@@ -423,4 +423,46 @@ class BlockchainService with ChangeNotifier {
     notifyListeners();
   });
 }
+
+  Future<String> acceptOfferDirectly(String offerId) async {
+    if (!_isConnected || _currentAddress == null) {
+      throw Exception('Not connected to blockchain');
+    }
+    
+    try {
+      final txHash = await promiseToFuture<String>(
+        sendContractTransaction(
+          _marketContractAddress, 
+          _marketContractAbi, 
+          'acceptOfferDirectly', 
+          jsify([offerId]),
+          null
+        )
+      );
+      return txHash;
+    } catch (e) {
+      throw Exception('Failed to accept offer: $e');
+    }
+  }
+
+  Future<List<String>> getUserAgreements(String userAddress) async {
+    if (!_isConnected) {
+      throw Exception('Not connected to blockchain');
+    }
+
+    try {
+      final result = await promiseToFuture<dynamic>(
+        callContractFunction(
+          _marketContractAddress, 
+          _marketContractAbi, 
+          'getUserAgreements', 
+          jsify([userAddress])
+        )
+      );
+      // Convert the JavaScript array to a Dart list of strings
+      return List<String>.from(result);
+    } catch (e) {
+      throw Exception('Failed to get user agreements: $e');
+    }
+  }
 }
