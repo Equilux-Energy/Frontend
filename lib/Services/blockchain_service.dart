@@ -57,6 +57,7 @@ class BlockchainService with ChangeNotifier {
   String? get currentAddress => _currentAddress;
   int? get currentChainId => _currentChainId;
   String? get currentBalance => _currentBalance;
+  String get marketContractAddress => _marketContractAddress;
   
   // Initialize the service
   Future<void> initialize() async {
@@ -110,7 +111,7 @@ class BlockchainService with ChangeNotifier {
   Future<void> _loadContracts() async {
     // Load token contract ABI
     final tokenAbiString = await rootBundle.loadString('tokencontractabi.txt');
-    _tokenContractAbi = jsonDecode(tokenAbiString);
+    _tokenContractAbi = tokenAbiString;
     
     // Load market contract ABI
     final marketAbiString = await rootBundle.loadString('marketcontractabi.txt');
@@ -479,6 +480,8 @@ Future<Map<String, dynamic>> getAgreementDetails(String agreementId) async {
     throw Exception('Not connected to blockchain');
   }
 
+  debugPrint('Fetching details for agreement: $agreementId');
+
   try {
     final result = await promiseToFuture<dynamic>(
       callContractFunction(
@@ -489,10 +492,16 @@ Future<Map<String, dynamic>> getAgreementDetails(String agreementId) async {
       )
     );
     
+    debugPrint('Raw agreement details: ${result.toString()}');
+
+    debugPrint('Result type: ${result[6].runtimeType}');
+    
     // Safely convert the numeric values from JS BigInt
-    final energyAmount = _convertJSValue(result[6]);
-    final totalPrice = _convertJSValue(result[7]);
+    final energyAmount = int.parse(result[6].toString());
+    final totalPrice = int.parse(result[7].toString());
     final timestamp = _convertJSValue(result[8]);
+    
+    debugPrint('Converted values - Energy: $energyAmount, ${energyAmount.runtimeType}, Price: $totalPrice, Timestamp: $timestamp');
     
     // Create millisecond timestamp for DateTime
     int timestampMs = 0;
@@ -502,15 +511,16 @@ Future<Map<String, dynamic>> getAgreementDetails(String agreementId) async {
       try {
         timestampMs = int.parse(timestamp.toString()) * 1000;
       } catch (e) {
+        debugPrint('Error parsing timestamp: $e');
         timestampMs = 0;
       }
     }
     
     // Format the final values
-    double finalEnergyAmount = energyAmount is double ? energyAmount / 1e18 : 0.0;
-    double finalTotalPrice = totalPrice is double ? totalPrice / 1e18 : 0.0;
+    int finalEnergyAmount = energyAmount;
+    int finalTotalPrice = totalPrice;
     
-    return {
+    final mappedResult = {
       'id': result[0],
       'offerId': result[1],
       'buyer': result[2],
@@ -523,7 +533,12 @@ Future<Map<String, dynamic>> getAgreementDetails(String agreementId) async {
       'isActive': result[9],
       'funded': result[10]
     };
+    
+    debugPrint('Processed agreement details: $mappedResult');
+    
+    return mappedResult;
   } catch (e) {
+    debugPrint('Error fetching agreement details: $e');
     throw Exception('Failed to get agreement details: $e');
   }
 }
@@ -550,23 +565,72 @@ Future<Map<String, dynamic>> getAgreementDetails(String agreementId) async {
   }
 
   Future<List<String>> getUserAgreements(String userAddress) async {
-    if (!_isConnected) {
-      throw Exception('Not connected to blockchain');
-    }
-
-    try {
-      final result = await promiseToFuture<dynamic>(
-        callContractFunction(
-          _marketContractAddress, 
-          _marketContractAbi, 
-          'getUserAgreements', 
-          jsify([userAddress])
-        )
-      );
-      // Convert the JavaScript array to a Dart list of strings
-      return List<String>.from(result);
-    } catch (e) {
-      throw Exception('Failed to get user agreements: $e');
-    }
+  if (!_isConnected) {
+    throw Exception('Not connected to blockchain');
   }
+
+  debugPrint('Fetching agreements for user: $userAddress');
+  
+  try {
+    final result = await promiseToFuture<dynamic>(
+      callContractFunction(
+        _marketContractAddress, 
+        _marketContractAbi, 
+        'getUserAgreements', 
+        jsify([userAddress])
+      )
+    );
+    
+    // Log the retrieved agreements
+    debugPrint('User agreements retrieved: ${result.toString()}');
+    
+    // Convert the JavaScript array to a Dart list of strings
+    return List<String>.from(result);
+  } catch (e) {
+    debugPrint('Error fetching user agreements: $e');
+    throw Exception('Failed to get user agreements: $e');
+  }
+}
+
+  Future<String> approveTokens(String spender, BigInt amount) async {
+  if (!_isConnected || _currentAddress == null) {
+    throw Exception('Not connected to blockchain');
+  }
+  
+  try {
+    final txHash = await promiseToFuture<String>(
+      sendContractTransaction(
+        _tokenContractAddress, 
+        _tokenContractAbi, 
+        'approve', 
+        jsify([spender, amount.toString()]),
+        null
+      )
+    );
+    return txHash;
+  } catch (e) {
+    throw Exception('Failed to approve tokens: $e');
+  }
+}
+
+Future<String> fundAgreement(String agreementId) async {
+  if (!_isConnected || _currentAddress == null) {
+    throw Exception('Not connected to blockchain');
+  }
+  
+  try {
+    final txHash = await promiseToFuture<String>(
+      sendContractTransaction(
+        _marketContractAddress, 
+        _marketContractAbi, 
+        'fundAgreement', 
+        jsify([agreementId]),
+        null
+      )
+    );
+    return txHash;
+  } catch (e) {
+    throw Exception('Failed to fund agreement: $e');
+  }
+}
 }

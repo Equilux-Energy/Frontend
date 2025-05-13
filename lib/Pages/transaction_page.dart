@@ -712,7 +712,7 @@ void initState() {
       final totalPrice = _energyAmount * _pricePerUnit;
       
       // Convert to appropriate format for blockchain (assuming energy amount and price as BigInt with 18 decimals)
-      final energyAmountBigInt = BigInt.from(_energyAmount * 1e18);
+      final energyAmountBigInt = BigInt.from(_energyAmount);
       final pricePerUnitBigInt = BigInt.from(_pricePerUnit * 1e18);
       
       // Convert dates to Unix timestamps (seconds since epoch)
@@ -720,7 +720,7 @@ void initState() {
       final endTimeBigInt = BigInt.from(_endDate.millisecondsSinceEpoch ~/ 1000);
       
       // Map offer type to integer enum value (0 for Sell, 1 for Buy)
-      final offerTypeInt = _offerType == 'Sell' ? 0 : 1;
+      final offerTypeInt = _offerType == 'Sell' ? 1 : 0;
       
       // Call the createOffer function
       final txHash = await _blockchainService.createOffer(
@@ -2025,7 +2025,7 @@ Color _getStatusColor(String status) {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              offer['offerType'],
+              offer['offerType'] == 'Sell' ? 'Buy' : 'Sell',
               style: TextStyle(
                 color: isSellType ? Colors.green : Colors.blue,
                 fontWeight: FontWeight.bold,
@@ -2113,7 +2113,7 @@ Color _getStatusColor(String status) {
                               // );
                             }
                           },
-                          child: Text(isSellType ? 'Buy' : 'Sell'),
+                          child: Text(isSellType ? 'Sell' : 'Buy'),
                         ),
                         // Chat button remains unchanged
                       ],
@@ -2416,7 +2416,7 @@ Color _getStatusColor(String status) {
         );
         
         // Convert blockchain values properly
-        final energyAmount = (offerDetails['energyAmount'] as BigInt).toDouble() / 1e18;
+        final energyAmount = (offerDetails['energyAmount'] as BigInt).toDouble();
         final pricePerUnit = (offerDetails['pricePerUnit'] as BigInt).toDouble() / 1e18;
         
         // Calculate USD price correctly instead of using blockchain's totalPrice
@@ -3001,13 +3001,13 @@ DataRow _buildAgreementRow(Map<String, dynamic> agreement) {
       ),
       DataCell(
         Text(
-          '\$${agreement['pricePerUnit'].toStringAsFixed(3)}/kWh',
+          '\$${(agreement['pricePerUnit']/1e18).toStringAsFixed(3)}/kWh',
           style: const TextStyle(color: Colors.white, fontSize: 13),
         ),
       ),
       DataCell(
         Text(
-          '\$${agreement['totalPrice'].toStringAsFixed(2)}',
+          '\$${(agreement['totalPrice']/1e18).toStringAsFixed(2)}',
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
@@ -3265,12 +3265,217 @@ Widget _buildAgreementCardList() {
 }
 
 Future<void> _fundAgreement(Map<String, dynamic> agreement) async {
-  // You can implement this later to call the smart contract's funding function
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(
-      content: Text('Funding functionality not implemented yet'),
-      backgroundColor: Colors.orange,
+  if (!_isWalletConnected) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Please connect your wallet first')),
+    );
+    return;
+  }
+  
+  // Show confirmation dialog first
+  bool proceedWithFunding = await showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: const Color(0xFF2A0030),
+      title: const Text('Fund Agreement', style: TextStyle(color: Colors.white)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This will require two transactions:',
+            style: TextStyle(color: Colors.white),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '1. Approve \$${agreement['totalPrice'].toStringAsFixed(2)} to be spent by the marketplace',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '2. Fund the agreement',
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Do you want to proceed?',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+          onPressed: () => Navigator.of(context).pop(false),
+        ),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Proceed'),
+        ),
+      ],
     ),
-  );
+  ) ?? false;
+  
+  if (!proceedWithFunding) return;
+  
+  setState(() {
+    _isLoading = true;
+  });
+  
+  try {
+    // Check if on correct network
+    if (_currentChainId != 17000) { // 17000 is Holesky testnet
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please switch to Holesky testnet')),
+      );
+      
+      await _switchNetwork(17000);
+      setState(() {
+        _isLoading = false;
+      });
+      return;
+    }
+    
+    // Step 1: Convert price to token amount with 18 decimals
+    final tokenAmount = BigInt.from(agreement['totalPrice'] * 1e18);
+    
+    // Show approval processing dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text('Approving Tokens', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Please confirm the approval in MetaMask...',
+              style: TextStyle(color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+    
+    // Step 2: Call approve on token contract
+    final approvalTxHash = await _blockchainService.approveTokens(
+      _blockchainService.marketContractAddress,
+      tokenAmount
+    );
+    
+    // Close the approval dialog
+    if (context.mounted) Navigator.of(context).pop();
+    
+    // Show funding processing dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF2A0030),
+        title: const Text('Funding Agreement', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Please confirm the funding transaction in MetaMask...',
+              style: TextStyle(color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 8),
+            Text(
+              'This will complete the funding process.',
+              style: TextStyle(color: Colors.white70),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+    
+    // Step 3: Call fundAgreement on market contract
+    final fundTxHash = await _blockchainService.fundAgreement(
+      agreement['id']
+    );
+    
+    // Close the funding dialog
+    if (context.mounted) Navigator.of(context).pop();
+    
+    // Update local agreement state
+    setState(() {
+      // Find and update the agreement in the list
+      final index = _userAgreements.indexWhere((a) => a['id'] == agreement['id']);
+      if (index != -1) {
+        _userAgreements[index]['funded'] = true;
+        _userAgreements[index]['status'] = 'Active';
+      }
+      _isLoading = false;
+    });
+    
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Agreement successfully funded!'),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'View Tx',
+          textColor: Colors.white,
+          onPressed: () {
+            final explorerUrl = _currentChainId == 17000
+                ? 'https://holesky.etherscan.io/tx/$fundTxHash'
+                : 'https://etherscan.io/tx/$fundTxHash';
+            launch(explorerUrl);
+          },
+        ),
+      ),
+    );
+    
+  } catch (e) {
+    setState(() {
+      _isLoading = false;
+    });
+    
+    // Close any open dialogs
+    if (context.mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+    
+    String errorMessage = e.toString();
+    if (errorMessage.contains('execution reverted')) {
+      if (errorMessage.contains('Funding deadline passed')) {
+        errorMessage = 'The funding deadline for this agreement has passed.';
+      } else if (errorMessage.contains('Agreement already funded')) {
+        errorMessage = 'This agreement has already been funded.';
+      } else if (errorMessage.contains('Token transfer failed')) {
+        errorMessage = 'Token transfer failed. Please ensure you have enough tokens.';
+      } else {
+        errorMessage = 'Transaction failed: ${errorMessage.substring(errorMessage.indexOf('execution reverted:') + 19, min(errorMessage.length, errorMessage.indexOf('execution reverted:') + 100))}';
+      }
+    }
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error funding agreement: $errorMessage'),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 8),
+      ),
+    );
+    
+    debugPrint('Detailed error funding agreement: $e');
+  }
 }
 }
