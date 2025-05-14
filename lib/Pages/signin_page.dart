@@ -183,43 +183,7 @@ class _SignInPageState extends State<SignInPage> {
                                     child: const Text('Create new account'),
                                   ),
                                     // Social Login Section
-                                    const SizedBox(height: 24),
-                                    const Row(
-                                      children: [
-                                        Expanded(child: Divider()),
-                                        Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 8.0),
-                                          child: Text('OR'),
-                                        ),
-                                        Expanded(child: Divider()),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 24),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        icon: const Icon(Icons.g_mobiledata, size: 24),
-                                        label: const Text('Continue with Google'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(vertical: 16),
-                                          side: const BorderSide(color: Colors.grey),
-                                        ),
-                                        onPressed: () {}, // Empty onPressed for now
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton.icon(
-                                        icon: const Icon(Icons.facebook, size: 24),
-                                        label: const Text('Continue with Facebook'),
-                                        style: OutlinedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(vertical: 16),
-                                          side: const BorderSide(color: Colors.grey),
-                                        ),
-                                        onPressed: () {}, // Empty onPressed for now
-                                      ),
-                                    ),
+                                    
                                   ],
                                 ),
                               ),
