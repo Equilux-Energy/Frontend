@@ -112,7 +112,7 @@ class _SignUpPageState extends State<SignUpPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const FlutterLogo(size: 80),
+                            Image.asset('assets/PIONEAR/2.png', width: 160, height: 80),
                             const SizedBox(height: 24),
                             const Text('Create New Account',
                                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),

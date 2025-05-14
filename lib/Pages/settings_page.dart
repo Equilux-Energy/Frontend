@@ -624,9 +624,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       title: Row(
         children: [
-          const FlutterLogo(size: 32),
-          const SizedBox(width: 8),
-          Text('PIONEER'),
+          Image.asset('assets/PIONEAR/1.png', width: 192, height: 32),
         ],
       ),
       actions: [
@@ -654,7 +652,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text('PIONEER Dashboard', 
+        Text('PIONEAR Dashboard', 
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
         Row(
           children: [
@@ -790,20 +788,11 @@ class _SettingsPageState extends State<SettingsPage> {
               end: Alignment.bottomCenter,
             ),
           ),
-          child: const Center(
+          child: Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                FlutterLogo(size: 32),
-                SizedBox(width: 8),
-                Text(
-                  'PIONEER',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Image.asset('assets/PIONEAR/1.png', width: 192, height: 32),
               ],
             ),
           ),

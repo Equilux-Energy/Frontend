@@ -6,7 +6,7 @@
 
 ## 🌟 Overview
 
-Welcome to the Equilux PIONEER project's frontend repository! Built with Flutter/Dart, this cross-platform solution revolutionizes energy management with an intuitive, powerful interface.
+Welcome to the Equilux PIONEAR project's frontend repository! Built with Flutter/Dart, this cross-platform solution revolutionizes energy management with an intuitive, powerful interface.
 
 <p align="center">
   <img src="https://via.placeholder.com/800x400?text=Equilux+Energy+App" alt="Equilux App Preview" width="80%">

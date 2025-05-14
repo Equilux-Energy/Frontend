@@ -1568,20 +1568,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               end: Alignment.bottomCenter,
             ),
           ),
-          child: const Center(
+          child: Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                FlutterLogo(size: 32),
-                SizedBox(width: 8),
-                Text(
-                  'PIONEER',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Image.asset('assets/PIONEAR/1.png', width: 192, height: 32),
               ],
             ),
           ),

@@ -129,7 +129,7 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
       scheme: 'mailto',
       path: 'equilux.energy.dev@gmail.com',
       queryParameters: {
-        'subject': 'Inquiry about PIONEER Project'
+        'subject': 'Inquiry about PIONEAR Project'
       }
     );
     
@@ -392,7 +392,7 @@ class _LandingPageState extends State<LandingPage> with TickerProviderStateMixin
                   ).createShader(bounds);
                 },
                 child: Text(
-                  'PIONEER',
+                  'PIONEAR',
                   style: TextStyle(
                     fontSize: isMobile ? 18 : 24,
                     fontWeight: FontWeight.w800,
@@ -554,7 +554,7 @@ Widget _buildMobileAppBarContent() {
           ).createShader(bounds);
         },
         child: const Text(
-          'PIONEER',
+          'PIONEAR',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -713,7 +713,7 @@ Widget _buildDesktopAppBarContent() {
               ).createShader(bounds);
             },
             child: const Text(
-              'PIONEER',
+              'PIONEAR',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -860,7 +860,7 @@ Widget _buildDesktopAppBarContent() {
               children: [
                 // Main title with glowing effect
                 FutureText(
-                  'PIONEER',
+                  'PIONEAR',
                   style: TextStyle(
                     fontSize: Responsive.getFontSize(context, isMobile ? 60 : isTablet ? 80 : 100),
                     fontWeight: FontWeight.w900,
@@ -1062,7 +1062,7 @@ Widget _buildDesktopAppBarContent() {
           child: SizedBox(
             width: isMobile ? double.infinity : 800,
             child: Text(
-              'PIONEER transforms conventional energy systems into dynamic, decentralized networks. Break free from unreliable centralized infrastructure and high costs with peer-to-peer energy trading.',
+              'PIONEAR transforms conventional energy systems into dynamic, decentralized networks. Break free from unreliable centralized infrastructure and high costs with peer-to-peer energy trading.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: Responsive.getFontSize(context, isMobile ? 14 : 18),
@@ -1445,7 +1445,7 @@ Widget _buildDesktopEnergyNodes() {
             child: SizedBox(
               width: 800,
               child: Text(
-                'PIONEER integrates cutting-edge technologies into a seamless ecosystem. Blockchain, AI, and IoT work together to create a secure, efficient, and autonomous energy trading platform.',
+                'PIONEAR integrates cutting-edge technologies into a seamless ecosystem. Blockchain, AI, and IoT work together to create a secure, efficient, and autonomous energy trading platform.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 18,
@@ -1512,7 +1512,7 @@ Widget _buildDesktopEnergyNodes() {
                             ),
                             const SizedBox(height: 15),
                             const Text(
-                              'PIONEER Core',
+                              'PIONEAR Core',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -1851,7 +1851,7 @@ Widget _buildDesktopEnergyNodes() {
             child: SizedBox(
               width: 800,
               child: Text(
-                'PIONEER offers a comprehensive suite of futuristic features that redefine how energy is managed, traded, and optimized in decentralized networks.',
+                'PIONAER offers a comprehensive suite of futuristic features that redefine how energy is managed, traded, and optimized in decentralized networks.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 18,
@@ -2195,7 +2195,7 @@ Widget _buildDesktopEnergyNodes() {
           child: SizedBox(
             width: isMobile ? double.infinity : (isTablet ? 600 : 800),
             child: Text(
-              'Interested in learning more about PIONEER? Get in touch with our team to discuss how decentralized energy trading can transform your community.',
+              'Interested in learning more about PIONEAR? Get in touch with our team to discuss how decentralized energy trading can transform your community.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: Responsive.getFontSize(context, isMobile ? 14 : 18),

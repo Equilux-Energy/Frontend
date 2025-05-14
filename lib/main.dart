@@ -50,7 +50,7 @@ class MyApp extends StatelessWidget {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
-          title: 'PIONEER Energy Platform',
+          title: 'PIONEAR Energy Platform',
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData,
           initialRoute: '/signin',

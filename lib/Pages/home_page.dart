@@ -48,6 +48,11 @@ class _HomePageState extends State<HomePage> {
   String? _energyHistoryError;
   List<dynamic>? _energyHistoryData;
   int _energyHistoryLimit = 24;  // Default to 24 hours
+
+  // Add these with your other state variables in _HomePageState
+  bool _isLoadingAveragePrice = false;
+  String? _averagePriceError;
+  double? _averageWeeklyPrice;
   
   @override
   void initState() {
@@ -66,6 +71,7 @@ class _HomePageState extends State<HomePage> {
       _fetchConsumptionPredictions();
       _fetchProductionData();
       _fetchEnergyHistoryData();
+      _fetchAverageWeeklyPrice();
   }
   
   @override
@@ -95,6 +101,10 @@ class _HomePageState extends State<HomePage> {
       _currentBalance = _blockchainService.currentBalance;
       _currentChainId = _blockchainService.currentChainId;
     });
+
+    if (_blockchainService.isConnected) {
+      _fetchAverageWeeklyPrice();
+    }
   }
   
   Future<void> _connectWallet() async {
@@ -187,9 +197,9 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 16),
                               Text('Dashboard', 
                                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
-                              // const SizedBox(height: 24),
+                              const SizedBox(height: 24),
                               
-                              // _buildStatsCards(),
+                              _buildStatsCards(),
                               
                               const SizedBox(height: 24),
                               
@@ -227,9 +237,7 @@ class _HomePageState extends State<HomePage> {
       ),
       title: Row(
         children: [
-          const FlutterLogo(size: 32),
-          const SizedBox(width: 8),
-          Text('PIONEER'),
+                Image.asset('assets/PIONEAR/1.png', width: 192, height: 32),
         ],
       ),
       actions: [
@@ -257,7 +265,7 @@ class _HomePageState extends State<HomePage> {
   return Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text('PIONEER Dashboard', 
+      Text('PIONEAR Dashboard', 
         style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
       Row(
         children: [
@@ -447,20 +455,11 @@ class _HomePageState extends State<HomePage> {
               end: Alignment.bottomCenter,
             ),
           ),
-          child: const Center(
+          child: Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                FlutterLogo(size: 32),
-                SizedBox(width: 8),
-                Text(
-                  'PIONEER',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Image.asset('assets/PIONEAR/1.png', width: 192, height: 32),
               ],
             ),
           ),
@@ -549,40 +548,44 @@ class _HomePageState extends State<HomePage> {
           children: [
             _buildStatsCard(
               context,
-              icon: Icons.energy_savings_leaf,
-              iconColor: Colors.green,
-              title: 'Energy Used',
-              value: '149.5 kWh',
-              subtitle: '+15% than last week',
-              isPositiveTrend: false,
+              icon: Icons.price_change,
+              iconColor: Colors.purple,
+              title: 'Average Price',
+              value: _isLoadingAveragePrice 
+                  ? 'Loading...' 
+                  : _averagePriceError != null 
+                      ? 'Error' 
+                      : '\$${_averageWeeklyPrice?.toStringAsFixed(3) ?? '0.000'}/kWh',
+              subtitle: 'Past 7 days',
+              isPositiveTrend: _averageWeeklyPrice != null && _averageWeeklyPrice! < 0.05,
             ),
-            _buildStatsCard(
-              context,
-              icon: Icons.eco,
-              iconColor: Colors.blue,
-              title: 'Carbon Offset',
-              value: '24 kg',
-              subtitle: '+30% than last month',
-              isPositiveTrend: true,
-            ),
-            _buildStatsCard(
-              context,
-              icon: Icons.account_balance,
-              iconColor: Colors.orange,
-              title: 'Token Balance',
-              value: '1,245',
-              subtitle: '+3% this week',
-              isPositiveTrend: true,
-            ),
-            _buildStatsCard(
-              context,
-              icon: Icons.bolt,
-              iconColor: Colors.red,
-              title: 'Peak Power',
-              value: '3.2 kW',
-              subtitle: '-8% this month',
-              isPositiveTrend: true,
-            ),
+            // _buildStatsCard(
+            //   context,
+            //   icon: Icons.eco,
+            //   iconColor: Colors.blue,
+            //   title: 'Carbon Offset',
+            //   value: '24 kg',
+            //   subtitle: '+30% than last month',
+            //   isPositiveTrend: true,
+            // ),
+            // _buildStatsCard(
+            //   context,
+            //   icon: Icons.account_balance,
+            //   iconColor: Colors.orange,
+            //   title: 'Token Balance',
+            //   value: '1,245',
+            //   subtitle: '+3% this week',
+            //   isPositiveTrend: true,
+            // ),
+            // _buildStatsCard(
+            //   context,
+            //   icon: Icons.bolt,
+            //   iconColor: Colors.red,
+            //   title: 'Peak Power',
+            //   value: '3.2 kW',
+            //   subtitle: '-8% this month',
+            //   isPositiveTrend: true,
+            // ),
           ],
         );
       }
@@ -1882,4 +1885,46 @@ Widget _buildEnergyLegendItem(String label, Color color) {
     ],
   );
 }
+
+// Add this method to your _HomePageState class
+Future<void> _fetchAverageWeeklyPrice() async {
+  if (!_isWalletConnected) {
+    setState(() {
+      _averagePriceError = "Wallet not connected";
+      _isLoadingAveragePrice = false;
+    });
+    return;
+  }
+  
+  setState(() {
+    _isLoadingAveragePrice = true;
+    _averagePriceError = null;
+  });
+  
+  try {
+    // Check if blockchain service is properly initialized
+    if (!_blockchainService.isConnected || 
+        _blockchainService.currentAddress == null) {
+      setState(() {
+        _averagePriceError = "Blockchain service not ready";
+        _isLoadingAveragePrice = false;
+      });
+      return;
+    }
+    
+    final price = await _blockchainService.getAveragePriceLastWeek();
+    
+    setState(() {
+      _averageWeeklyPrice = price;
+      _isLoadingAveragePrice = false;
+    });
+  } catch (e) {
+    setState(() {
+      _averagePriceError = e.toString();
+      _isLoadingAveragePrice = false;
+      print('Error loading average price: $e');
+    });
+  }
+}
+
 }

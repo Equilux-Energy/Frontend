@@ -35,7 +35,7 @@ external void setupEventHandlers(dynamic accountsChangedCallback, dynamic chainC
 class BlockchainService with ChangeNotifier {
   // Contract addresses
   late String _tokenContractAddress;
-  late String _marketContractAddress;
+  String _marketContractAddress = '0x23Ab54Aac277e66f3d84E088fBb966d76aB56082';
   
   // Contract ABIs
   dynamic _tokenContractAbi;
@@ -48,8 +48,30 @@ class BlockchainService with ChangeNotifier {
   bool _isConnected = false;
   
   BlockchainService() {
-    // Call your initialize method right away
+    // Set default contract addresses right away to prevent late init errors
+    _tokenContractAddress = '0x52e12c26029ed061de7568e2b1acd9a39277e3ef';
+    _marketContractAddress = '0x23Ab54Aac277e66f3d84E088fBb966d76aB56082';
+    
+    // Then proceed with async initialization
     _initializeDapp();
+    
+    // Load contract ABIs
+    _loadContractABIs();
+  }
+
+  // Separate method just for loading ABIs
+  Future<void> _loadContractABIs() async {
+    try {
+      // Load token contract ABI
+      final tokenAbiString = await rootBundle.loadString('assets/tokencontractabi.txt');
+      _tokenContractAbi = tokenAbiString;
+      
+      // Load market contract ABI
+      final marketAbiString = await rootBundle.loadString('assets/marketcontractabi.txt');
+      _marketContractAbi = marketAbiString;
+    } catch (e) {
+      debugPrint('Error loading contract ABIs: $e');
+    }
   }
 
   // Getters
@@ -57,7 +79,13 @@ class BlockchainService with ChangeNotifier {
   String? get currentAddress => _currentAddress;
   int? get currentChainId => _currentChainId;
   String? get currentBalance => _currentBalance;
-  String get marketContractAddress => _marketContractAddress;
+  String get marketContractAddress {
+  // Ensure contract address is set - always return a valid string even if not initialized
+  if (_marketContractAddress.isEmpty) {
+    _marketContractAddress = '0x23Ab54Aac277e66f3d84E088fBb966d76aB56082';
+  }
+  return _marketContractAddress;
+}
   
   // Initialize the service
   Future<void> initialize() async {
@@ -132,6 +160,7 @@ class BlockchainService with ChangeNotifier {
       _currentChainId = result.chainId;
       _currentBalance = result.balance;
       _isConnected = true;
+      _marketContractAddress = '0x23Ab54Aac277e66f3d84E088fBb966d76aB56082';
       
       notifyListeners();
       return true;
@@ -631,6 +660,82 @@ Future<String> fundAgreement(String agreementId) async {
     return txHash;
   } catch (e) {
     throw Exception('Failed to fund agreement: $e');
+  }
+}
+
+// Add to your BlockchainService class
+Future<double> getAveragePriceLastWeek() async {
+  if (!_isConnected) {
+    throw Exception('Not connected to blockchain');
+  }
+
+  try {
+    final result = await promiseToFuture<dynamic>(
+      callContractFunction(
+        _marketContractAddress, 
+        _marketContractAbi, 
+        'getAveragePriceLastWeek', 
+        jsify([])
+      )
+    );
+
+    debugPrint('Average price result: $result');
+    
+    // Convert the result (BigInt) to a double and divide by 1e18 (token decimals)
+    double averagePrice = 0.0;
+    try {
+      // Handle JavaScript BigInt
+      String valueStr = result.toString().replaceAll('n', '');
+      averagePrice = double.parse(valueStr) / 1e18;
+    } catch (e) {
+      print('Error parsing average price: $e');
+      averagePrice = 0.0;
+    }
+    
+    return averagePrice;
+  } catch (e) {
+    print('Error fetching average price: $e');
+    throw Exception('Failed to get average price: $e');
+  }
+}
+
+// Add this method to your BlockchainService class
+Future<Map<String, dynamic>> getUserStats(String userAddress) async {
+  if (!_isConnected) {
+    throw Exception('Not connected to blockchain');
+  }
+
+  try {
+    final result = await promiseToFuture<dynamic>(
+      callContractFunction(
+        _marketContractAddress, 
+        _marketContractAbi, 
+        'getUserStats', 
+        jsify([userAddress])
+      )
+    );
+    
+    debugPrint('Raw user stats: $result');
+    
+    // Convert numeric values safely
+    final Map<String, dynamic> stats = {
+      'username': result[0],
+      'offersCreated': int.parse(result[1].toString().replaceAll('n', '')),
+      'offersCountered': int.parse(result[2].toString().replaceAll('n', '')),
+      'agreementsCompleted': int.parse(result[3].toString().replaceAll('n', '')),
+      'agreementsCancelled': int.parse(result[4].toString().replaceAll('n', '')),
+      'disputesInitiated': int.parse(result[5].toString().replaceAll('n', '')),
+      'disputesWon': int.parse(result[6].toString().replaceAll('n', '')),
+      'totalEnergyTraded': double.parse(result[7].toString().replaceAll('n', '')) / 1e18,
+      'totalValueTraded': double.parse(result[8].toString().replaceAll('n', '')) / 1e18,
+      'lastActivityTimestamp': int.parse(result[9].toString().replaceAll('n', '')),
+    };
+    
+    debugPrint('Processed user stats: $stats');
+    return stats;
+  } catch (e) {
+    debugPrint('Error fetching user stats: $e');
+    throw Exception('Failed to get user stats: $e');
   }
 }
 

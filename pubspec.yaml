@@ -89,6 +89,8 @@ flutter:
     - lib/Services/energy_consumption_chart_data.json
     - assets/tokencontractabi.txt
     - assets/marketcontractABI.txt
+    - assets/PIONEAR/1.png
+    - assets/PIONEAR/2.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

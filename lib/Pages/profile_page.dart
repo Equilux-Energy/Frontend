@@ -53,6 +53,11 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _currentBalance;
   int? _currentChainId;
 
+  // Add these variables to your _ProfilePageState class
+  bool _isLoadingStats = false;
+  Map<String, dynamic>? _userStats;
+  String? _userStatsError;
+
   @override
   void initState() {
     super.initState();
@@ -451,67 +456,129 @@ class _ProfilePageState extends State<ProfilePage> {
 }
   
   Widget _buildStatsCard() {
-    return Card(
-      elevation: 8,
-      shadowColor: Colors.black,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF2A0030).withOpacity(0.7),
-              const Color(0xff5e0b8b).withOpacity(0.5),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Account Statistics',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildStatItem(
-              icon: Icons.energy_savings_leaf,
-              title: 'Energy Produced',
-              value: '${_userData['energyProduced']} kWh',
-              iconColor: Colors.green,
-            ),
-            const Divider(color: Colors.white24, height: 32),
-            _buildStatItem(
-              icon: Icons.electric_bolt,
-              title: 'Energy Consumed',
-              value: '${_userData['energyConsumed']} kWh',
-              iconColor: Colors.orange,
-            ),
-            const Divider(color: Colors.white24, height: 32),
-            _buildStatItem(
-              icon: Icons.token,
-              title: 'Tokens Earned',
-              value: '${_userData['tokensEarned']}',
-              iconColor: Colors.blue,
-            ),
-            const Divider(color: Colors.white24, height: 32),
-            _buildStatItem(
-              icon: Icons.calendar_month,
-              title: 'Member Since',
-              value: '${_userData['joinDate'].day}/${_userData['joinDate'].month}/${_userData['joinDate'].year}',
-              iconColor: Colors.purple,
-            ),
+  return Card(
+    elevation: 8,
+    shadowColor: Colors.black,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    child: Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF2A0030).withOpacity(0.7),
+            const Color(0xff5e0b8b).withOpacity(0.5),
           ],
         ),
+        borderRadius: BorderRadius.circular(8),
       ),
-    );
-  }
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Account Statistics',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              if (_isWalletConnected)
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white70, size: 20),
+                  tooltip: 'Refresh stats',
+                  onPressed: _fetchUserStats,
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          if (_isLoadingStats)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.purple),
+                ),
+              )
+            )
+          else if (_userStatsError != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Column(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 48),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Connect your wallet to view stats',
+                      style: TextStyle(color: Colors.grey[400]),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (!_isWalletConnected)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: ElevatedButton(
+                          onPressed: _connectWallet,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF5C005C),
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Connect Wallet'),
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            )
+          else if (_userStats != null)
+            Column(
+              children: [
+                _buildStatItem(
+                  icon: Icons.energy_savings_leaf,
+                  title: 'Energy Traded',
+                  value: '${_userStats!['totalEnergyTraded'].toStringAsFixed(2)} kWh',
+                  iconColor: Colors.green,
+                ),
+                const Divider(color: Colors.white24, height: 32),
+                _buildStatItem(
+                  icon: Icons.attach_money,
+                  title: 'Value Traded',
+                  value: '\$${_userStats!['totalValueTraded'].toStringAsFixed(2)}',
+                  iconColor: Colors.purple,
+                ),
+                const Divider(color: Colors.white24, height: 32),
+                _buildStatItem(
+                  icon: Icons.handshake,
+                  title: 'Agreements Completed',
+                  value: '${_userStats!['agreementsCompleted']}',
+                  iconColor: Colors.blue,
+                ),
+                const Divider(color: Colors.white24, height: 32),
+                _buildStatItem(
+                  icon: Icons.post_add,
+                  title: 'Offers Created',
+                  value: '${_userStats!['offersCreated']}',
+                  iconColor: Colors.orange,
+                ),
+              ],
+            )
+          else
+            const Center(
+              child: Text(
+                'No statistics available',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
   
   Widget _buildStatItem({
     required IconData icon,
@@ -673,9 +740,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       title: Row(
         children: [
-          const FlutterLogo(size: 32),
-          const SizedBox(width: 8),
-          Text('PIONEER'),
+          Image.asset('assets/PIONEAR/1.png', width: 192, height: 32),
         ],
       ),
       actions: [
@@ -703,7 +768,7 @@ class _ProfilePageState extends State<ProfilePage> {
   return Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text('PIONEER Dashboard', 
+      Text('PIONEAR Dashboard', 
         style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
       Row(
         children: [
@@ -843,20 +908,11 @@ class _ProfilePageState extends State<ProfilePage> {
               end: Alignment.bottomCenter,
             ),
           ),
-          child: const Center(
+          child: Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                FlutterLogo(size: 32),
-                SizedBox(width: 8),
-                Text(
-                  'PIONEER',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                Image.asset('assets/PIONEAR/1.png', width: 192, height: 32),
               ],
             ),
           ),
@@ -1463,26 +1519,34 @@ Future<void> showChangePasswordDialog(BuildContext context) async {
 
   // Add these methods
   Future<void> _checkWalletConnection() async {
-    final isConnected = _blockchainService.isConnected;
-    
-    if (isConnected) {
-      setState(() {
-        _isWalletConnected = true;
-        _currentWalletAddress = _blockchainService.currentAddress;
-        _currentBalance = _blockchainService.currentBalance;
-        _currentChainId = _blockchainService.currentChainId;
-      });
-    }
-  }
+  final isConnected = _blockchainService.isConnected;
   
-  void _onBlockchainStateChanged() {
+  if (isConnected) {
     setState(() {
-      _isWalletConnected = _blockchainService.isConnected;
+      _isWalletConnected = true;
       _currentWalletAddress = _blockchainService.currentAddress;
       _currentBalance = _blockchainService.currentBalance;
       _currentChainId = _blockchainService.currentChainId;
     });
+    
+    // Fetch user stats when wallet is already connected
+    _fetchUserStats();
   }
+}
+  
+  void _onBlockchainStateChanged() {
+  setState(() {
+    _isWalletConnected = _blockchainService.isConnected;
+    _currentWalletAddress = _blockchainService.currentAddress;
+    _currentBalance = _blockchainService.currentBalance;
+    _currentChainId = _blockchainService.currentChainId;
+  });
+  
+  // Fetch user stats when wallet connects
+  if (_blockchainService.isConnected && _blockchainService.currentAddress != null) {
+    _fetchUserStats();
+  }
+}
   
   Future<void> _connectWallet() async {
     try {
@@ -1552,4 +1616,35 @@ Future<void> showChangePasswordDialog(BuildContext context) async {
       ),
     );
   }
+
+  // Add this method to your _ProfilePageState class
+  Future<void> _fetchUserStats() async {
+    if (!_isWalletConnected || _currentWalletAddress == null) {
+      setState(() {
+        _userStatsError = "Wallet not connected";
+      });
+      return;
+    }
+    
+    setState(() {
+      _isLoadingStats = true;
+      _userStatsError = null;
+    });
+    
+    try {
+      final stats = await _blockchainService.getUserStats(_currentWalletAddress!);
+      
+      setState(() {
+        _userStats = stats;
+        _isLoadingStats = false;
+      });
+    } catch (e) {
+      setState(() {
+        _userStatsError = e.toString();
+        _isLoadingStats = false;
+        debugPrint('Error loading user stats: $e');
+      });
+    }
+  }
+
 }

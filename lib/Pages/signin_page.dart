@@ -98,7 +98,7 @@ class _SignInPageState extends State<SignInPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              const FlutterLogo(size: 80),
+                              Image.asset('assets/PIONEAR/2.png', width: 160, height: 80),
                               const SizedBox(height: 24),
                               const Text('Sign In to Your Account',
                                   style: TextStyle(
