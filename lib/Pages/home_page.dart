@@ -187,9 +187,9 @@ class _HomePageState extends State<HomePage> {
                               const SizedBox(height: 16),
                               Text('Dashboard', 
                                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeProvider.textColor)),
-                              const SizedBox(height: 24),
+                              // const SizedBox(height: 24),
                               
-                              _buildStatsCards(),
+                              // _buildStatsCards(),
                               
                               const SizedBox(height: 24),
                               

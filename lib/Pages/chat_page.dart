@@ -211,44 +211,46 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadMessageHistory(String username) async {
+  setState(() {
+    _isLoadingMessages = true;
+    _messages = [];
+  });
+  
+  try {
+    final cognitoService = CognitoService();
+    final messageResponse = await cognitoService.getMessagesBetweenUsers(username);
+    
+    final currentUserId = widget.userData?['cognito:username'] ?? '';
+    
     setState(() {
-      _isLoadingMessages = true;
-      _messages = [];
+      _messages = messageResponse.messages
+          .map((msg) => msg.toChatMessage(currentUserId))
+          .toList().reversed.toList();
+      _nextPageToken = messageResponse.nextPageToken;
+      _isLoadingMessages = false;
+      
+      // Set the timestamp for future polling
+      if (_messages.isNotEmpty) {
+        _lastMessageTimestamp = _messages.first.time;
+      }
     });
     
-    try {
-      final cognitoService = CognitoService();
-      final messageResponse = await cognitoService.getMessagesBetweenUsers(username);
-      
-      final currentUserId = widget.userData?['cognito:username'] ?? '';
-      
-      setState(() {
-        _messages = messageResponse.messages
-            .map((msg) => msg.toChatMessage(currentUserId))
-            .toList().reversed.toList();
-        _nextPageToken = messageResponse.nextPageToken;
-        _isLoadingMessages = false;
-        
-        // Set the timestamp for future polling
-        if (_messages.isNotEmpty) {
-          _lastMessageTimestamp = _messages.first.time;
-        }
-      });
-      
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients) {
-          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-        }
-      });
-    } catch (e) {
-      if (kDebugMode) {
-        print('Exception when loading messages: $e');
-      }
-      setState(() {
-        _isLoadingMessages = false;
-      });
-    }
+    // Start the message refresh timer AFTER the state update
+    _startMessageRefresh();
+    
+    // Schedule scroll to bottom after messages are loaded
+    _scrollToBottom();
+    
+  } catch (e) {
+    print('Exception when loading messages: $e');
+    setState(() {
+      _isLoadingMessages = false;
+    });
+    
+    // Still start refresh timer even if initial load failed
+    _startMessageRefresh();
   }
+}
   
   void _filterUsers(String query) {
     setState(() {
@@ -292,6 +294,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void _openConversation(String username) {
     // Find or create a user object based on conversation
     final user = ChatUser(userId: username, username: username);
+    _stopMessageRefresh();
     _startConversationWithUser(user);
   }
   
@@ -772,6 +775,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Widget _buildMessageItem(ChatMessage message) {
     // Different bubble style based on who sent the message
     final isUser = message.isUser;
+
+    _messageController.clear();
+    _scrollToBottom();
     
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -1131,6 +1137,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _scrollToBottom() {
+  // Use SchedulerBinding to ensure we scroll after the layout is complete
+  WidgetsBinding.instance.addPostFrameCallback((_) {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
@@ -1138,7 +1146,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         curve: Curves.easeOut,
       );
     }
-  }
+  });
+}
 
   @override
   void dispose() {
@@ -1155,32 +1164,58 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     super.dispose();
   }
   
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty || _currentChatUser == null) return;
+  void _sendMessage() async {
+  final text = _messageController.text.trim();
+  if (text.isEmpty || _currentChatUser == null) return;
+  
+  // Create a copy of the text before clearing
+  final messageToBeSent = text;
+  
+  // Clear the text field immediately for better UX
+  _messageController.clear();
+  
+  final now = DateTime.now();
+  
+  // Add message locally first for immediate feedback
+  setState(() {
+    _messages.add(ChatMessage(
+      text: messageToBeSent,
+      isUser: true,
+      time: now,
+    ));
     
-    final now = DateTime.now();
-    
-    setState(() {
-      _messages.add(ChatMessage(
-        text: text,
-        isUser: true,
-        time: now,
-      ));
-      
-      _updateConversationWithLatestMessage(
-        username: _currentChatUser!.username,
-        lastMessage: text,
-        timestamp: now,
-        isTradeOffer: false,
-      );
-    });
-    
-    // Clear the text field
-    _messageController.clear();
-    
+    _updateConversationWithLatestMessage(
+      username: _currentChatUser!.username,
+      lastMessage: messageToBeSent,
+      timestamp: now,
+      isTradeOffer: false,
+    );
+  });
+  
+  // Scroll to bottom after UI update
+  WidgetsBinding.instance.addPostFrameCallback((_) {
     _scrollToBottom();
+  });
+  
+  try {
+    // Send the message to the server
+    print('Sending message to server: $messageToBeSent');
+    final cognitoService = CognitoService();
+    final sentMessage = await cognitoService.sendTextMessage(
+      recipientUsername: _currentChatUser!.username,
+      text: messageToBeSent,
+    );
+    
+    print('Message sent successfully with ID: ${sentMessage.messageId}');
+  } catch (e) {
+    print('Error sending message: $e');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send message: $e')),
+      );
+    }
   }
+}
 
   // Add this helper method to update the conversation list
   void _updateConversationWithLatestMessage({
@@ -2146,37 +2181,47 @@ Future<MessageResponse> getMessagesBetweenUsers(String username, {DateTime? sinc
 }
 
 @override
+@override
 void didChangeAppLifecycleState(AppLifecycleState state) {
-  if (_currentChatUser == null) return;
+  super.didChangeAppLifecycleState(state);
+  print('App lifecycle state changed to: $state');
   
   if (state == AppLifecycleState.resumed) {
-    // App is in the foreground - start refresh timer
-    _startMessageRefresh();
-    
-    // Also do an immediate refresh
-    _refreshMessages();
-  } else if (state == AppLifecycleState.paused) {
-    // App is in the background - stop refresh timer to save resources
+    print('App resumed - starting refresh timer');
+    if (_currentChatUser != null) {
+      _startMessageRefresh();
+      // Also do an immediate refresh
+      _refreshMessages();
+    } else {
+      print('Not starting timer because no chat user is selected');
+    }
+  } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    print('App paused/inactive - stopping refresh timer');
     _stopMessageRefresh();
   }
 }
 
 // Add this method to start the refresh timer
+// Update the _startMessageRefresh method
 void _startMessageRefresh() {
   // Cancel any existing timer
   _stopMessageRefresh();
   
+  print('Starting message refresh timer...');
+  
   // Start a new timer that refreshes every 3 seconds
   _isRefreshEnabled = true;
   _refreshTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+    print('Timer callback executing'); // Debug log to verify timer is running
     if (_currentChatUser != null && _isRefreshEnabled) {
+      print('Refreshing messages for ${_currentChatUser!.username}');
       _refreshMessages();
+    } else {
+      print('Refresh skipped - currentChatUser: ${_currentChatUser?.username}, isEnabled: $_isRefreshEnabled');
     }
   });
   
-  if (kDebugMode) {
-    print('Started message refresh timer');
-  }
+  print('Message refresh timer started with interval: 3s');
 }
 
 // Add this method to stop the refresh timer
@@ -2192,46 +2237,87 @@ void _stopMessageRefresh() {
 
 // Add this method to refresh messages without clearing the UI
 Future<void> _refreshMessages() async {
-  if (_currentChatUser == null || _isLoadingMessages) return;
+  if (_currentChatUser == null || _isLoadingMessages) {
+    print('Refresh aborted - chat user null or loading in progress');
+    return;
+  }
   
   try {
+    print('Starting message refresh for ${_currentChatUser!.username}');
     final cognitoService = CognitoService();
     final messageResponse = await cognitoService.getMessagesBetweenUsers(_currentChatUser!.username);
     
     final currentUserId = widget.userData?['cognito:username'] ?? '';
-    
+    debugPrint('Messages: ${messageResponse.messages[0].text}');
+    debugPrint('Messages length: ${messageResponse.messages.length}');
     final updatedMessages = messageResponse.messages
         .map((msg) => msg.toChatMessage(currentUserId))
         .toList()
         .reversed
         .toList();
         
-    // Only update if we have new messages (compare counts)
+    print('Retrieved ${updatedMessages.length} messages, current count: ${_messages.length}');
+    
+    bool shouldUpdate = false;
+    
+    // Check if there are new messages
     if (updatedMessages.length > _messages.length) {
-      // Get the most recent message to update sidebar
-      final latestMessage = updatedMessages.last;
-      
-      setState(() {
-        _messages = updatedMessages;
-        
-        // Update conversation sidebar with latest message info
-        _updateConversationWithLatestMessage(
-          username: _currentChatUser!.username,
-          lastMessage: latestMessage.text,
-          timestamp: latestMessage.time,
-          isTradeOffer: latestMessage.type == MessageType.offer,
-        );
-      });
-      
-      // Auto-scroll if user was already at the bottom
-      if (_isScrolledToBottom()) {
-        _scrollToBottom();
+      _scrollToBottom();
+      shouldUpdate = true;
+      print('Found ${updatedMessages.length - _messages.length} new messages');
+    } 
+    // Check for message content changes (like offer status)
+    else if (updatedMessages.length == _messages.length) {
+      for (int i = 0; i < updatedMessages.length; i++) {
+        if (i < _messages.length &&
+            updatedMessages[i].messageId != null && 
+            _messages[i].messageId != null &&
+            updatedMessages[i].messageId == _messages[i].messageId) {
+          // Check for offer status changes
+          if (updatedMessages[i].offer?.status != _messages[i].offer?.status) {
+            print('Message ${updatedMessages[i].messageId}: Offer status changed from ${_messages[i].offer?.status} to ${updatedMessages[i].offer?.status}');
+            shouldUpdate = true;
+            break;
+          }
+        }
       }
     }
-  } catch (e) {
-    if (kDebugMode) {
-      print('Error refreshing messages: $e');
+        
+    if (shouldUpdate) {
+      print('Updating messages UI with latest data');
+      
+      // Remember if we were at the bottom before update
+      bool wasAtBottom = _isScrolledToBottom();
+      
+      // Use mounted check before setState to avoid errors
+      if (mounted) {
+        setState(() {
+          _messages = updatedMessages;
+          
+          // Get the most recent message to update sidebar
+          if (updatedMessages.isNotEmpty) {
+            final latestMessage = updatedMessages.last;
+            
+            // Update conversation sidebar with latest message info
+            _updateConversationWithLatestMessage(
+              username: _currentChatUser!.username,
+              lastMessage: latestMessage.text,
+              timestamp: latestMessage.time,
+              isTradeOffer: latestMessage.type == MessageType.offer,
+            );
+          }
+        });
+        
+        // Auto-scroll if user was already at the bottom
+        if (wasAtBottom) {
+          //_scrollToBottom();
+        }
+      }
+    } else {
+      print('No message updates needed');
     }
+  } catch (e) {
+    print('Error refreshing messages: $e');
   }
 }
 

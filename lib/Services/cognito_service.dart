@@ -393,7 +393,7 @@ class CognitoService {
 
 Future<MessageResponse> getMessagesBetweenUsers(
   String otherUsername, {
-  int limit = 20,
+  int limit = 100,
   String? lastEvaluatedKey,
   bool oldestFirst = false, 
   DateTime? since,
@@ -416,7 +416,7 @@ Future<MessageResponse> getMessagesBetweenUsers(
     
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      debugPrint('Messages: $data');
+      //debugPrint('Messages: $data');
       return MessageResponse.fromJson(data);
     } else {
       throw Exception('Failed to load messages: ${response.statusCode}');
@@ -554,6 +554,8 @@ Future<MessageResponse> getMessagesBetweenUsers(
     required String text,
   }) async {
     try {
+
+    debugPrint('Sending message to $recipientUsername: $text');
       final token = await _getIdToken();
       
       final response = await http.post(

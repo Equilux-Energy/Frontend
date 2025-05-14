@@ -633,4 +633,5 @@ Future<String> fundAgreement(String agreementId) async {
     throw Exception('Failed to fund agreement: $e');
   }
 }
+
 }

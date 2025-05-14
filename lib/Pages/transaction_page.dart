@@ -3478,4 +3478,5 @@ Future<void> _fundAgreement(Map<String, dynamic> agreement) async {
     debugPrint('Detailed error funding agreement: $e');
   }
 }
+
 }
